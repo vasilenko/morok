@@ -4,21 +4,28 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Morok</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #0b0a09;
-      }
-      #game canvas {
-        display: block;
-      }
-    </style>
   </head>
   <body>
     <div id="game"></div>
+
+    <div class="hud" id="hud">
+      <div>
+        <small id="hpLabel"></small>
+        <div class="hp-bar"><i id="hpFill"></i></div>
+      </div>
+      <div class="clock">
+        <div id="timer">00:00</div>
+        <small id="waveLabel"></small>
+      </div>
+      <div class="kills">
+        <div id="kills">0</div>
+        <small id="killsLabel"></small>
+      </div>
+    </div>
+
+    <div id="banner"></div>
+    <div class="screen" id="screen"></div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
