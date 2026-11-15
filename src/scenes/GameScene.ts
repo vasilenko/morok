@@ -1,16 +1,19 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
+import { FootprintDebug } from '../debug/FootprintDebug';
 import { DPR } from '../display';
 import { Horde } from '../entities/Horde';
 import { Player } from '../entities/Player';
-import { EVENTS } from '../events';
 import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
+import { addNight, type NightFilter } from '../night/NightFilter';
 import { WaveDirector } from '../systems/WaveDirector';
 import { STRINGS } from '../ui/strings';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
 import { Ground } from '../world/Ground';
+import { Scenery } from '../world/Scenery';
+import { randomScenerySeed } from '../world/SceneryLayout';
 
 type Mode = 'title' | 'run' | 'pause' | 'dead';
 
@@ -42,9 +45,14 @@ export class GameScene extends Phaser.Scene {
   private player!: Player;
   private horde!: Horde;
   private ground!: Ground;
+  private scenery!: Scenery;
   private fx!: Fx;
   private stake!: AspenStake;
   private director!: WaveDirector;
+  /** Public for tuning from the console in dev builds. */
+  night!: NightFilter;
+  /** Dev builds only: outlines of the footprints. Declared, so production builds get no field. */
+  declare private footprintDebug?: FootprintDebug;
 
   /** Seconds survived in this run. */
   private elapsed = 0;
@@ -57,8 +65,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Draw order, bottom to top. Entities are depth-sorted by their y.
-    const ground = this.add.layer();
+    // Draw order, bottom to top: the soil, puddles on it, shadows, then
+    // everything standing. Entities are depth-sorted by the y where they
+    // meet the ground.
+    const tiles = this.add.layer();
+    const puddles = this.add.layer();
     const shadows = this.add.layer();
     const entities = this.add.layer();
     const overhead = this.add.layer();
@@ -67,12 +78,17 @@ export class GameScene extends Phaser.Scene {
     this.clock = 0;
     this.kills = 0;
 
-    this.ground = new Ground(this, ground);
-    this.player = new Player(this, { ground, shadows, entities, overhead });
+    this.ground = new Ground(this, tiles);
+    // A new layout of the scenery for every run.
+    this.scenery = new Scenery(this, puddles, entities, randomScenerySeed());
+    this.player = new Player(this, { shadows, entities, overhead });
     this.horde = new Horde(this, entities, shadows);
     this.fx = new Fx(this, overhead);
     this.stake = new AspenStake(this, overhead, this.horde, this.fx);
     this.director = new WaveDirector(CFG.spawn);
+    // Light, fog and the hurt flash, over everything the camera sees.
+    this.night = addNight(this.cameras.main);
+    if (import.meta.env.DEV) this.footprintDebug = new FootprintDebug(this, overhead);
 
     controls.onAdvance = () => this.advance();
     controls.onPause = () => this.togglePause();
@@ -95,7 +111,7 @@ export class GameScene extends Phaser.Scene {
       this.mode = 'title';
       ui.showTitle();
     }
-    this.player.draw(this.clock);
+    this.player.draw();
     this.frameCamera();
   }
 
@@ -103,7 +119,8 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(MAX_DT, delta / 1000);
     this.clock += dt;
     if (this.mode === 'run') this.simulate(dt);
-    this.player.draw(this.clock);
+    this.player.draw();
+    this.night.steer(this.player.facing, this.player.moving ? controls.moveY : 0, dt);
     this.frameCamera();
   }
 
@@ -124,6 +141,8 @@ export class GameScene extends Phaser.Scene {
     this.elapsed += dt;
     const player = this.player;
     player.update(dt, controls.moveX, controls.moveY);
+    const feet = this.scenery.blockFeet(player.x, player.feetY, CFG.player.radius);
+    player.placeFeet(feet.x, feet.y);
 
     const spawnRadius = this.spawnRadius;
     const wave = this.director.update(dt, this.elapsed, (angle, extraDistance) => {
@@ -143,7 +162,7 @@ export class GameScene extends Phaser.Scene {
   private onPlayerHurt(): void {
     this.cameras.main.shake(260, 0.006);
     this.fx.blood(this.player.x, this.player.y);
-    this.game.events.emit(EVENTS.playerHurt);
+    this.night.flash();
     if (this.player.dead) this.die();
   }
 
@@ -199,14 +218,25 @@ export class GameScene extends Phaser.Scene {
     const camera = this.cameras.main;
     camera.setZoom(CFG.zoom * DPR);
     camera.centerOn(this.player.x, this.player.y);
+    this.night.focusX = this.player.x;
+    this.night.focusY = this.player.y;
+    const eye = this.player.skullEye;
+    this.night.eyeX = eye.x;
+    this.night.eyeY = eye.y;
     const { width, height } = this.viewSize;
     // A margin keeps the ground under the screen edges during camera shake.
     const margin = 32;
-    this.ground.cover(
-      this.player.x - width / 2 - margin,
-      this.player.y - height / 2 - margin,
-      width + margin * 2,
-      height + margin * 2,
-    );
+    const left = this.player.x - width / 2 - margin;
+    const top = this.player.y - height / 2 - margin;
+    this.ground.cover(left, top, width + margin * 2, height + margin * 2);
+    this.scenery.cover(left, top, width + margin * 2, height + margin * 2);
+    if (import.meta.env.DEV) {
+      this.footprintDebug?.draw(
+        () => this.scenery.footprints(left, top, width + margin * 2, height + margin * 2),
+        this.player.x,
+        this.player.feetY,
+        CFG.player.radius,
+      );
+    }
   }
 }

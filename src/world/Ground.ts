@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { GROUND_ART_SCALE, GROUND_TILE, TEX } from '../art/textures';
+import { GROUND_ART_SCALE, GROUND_TILE, TEX, greyTint } from '../art/textures';
+
+/**
+ * The soil art is too light and busy for the sprites to read against, so
+ * it is darkened by a multiply tint to this share of its brightness.
+ */
+const GROUND_BRIGHTNESS = 0.62;
 
 /**
  * Endless ground made of one repeating tile. Keeps just enough tile images
@@ -32,7 +38,12 @@ export class Ground {
   }
 
   private addTile(): Phaser.GameObjects.Image {
-    const tile = this.scene.add.image(0, 0, TEX.ground).setOrigin(0).setScale(1 / GROUND_ART_SCALE);
+    const tile = this.scene.add
+      .image(0, 0, TEX.ground)
+      .setOrigin(0)
+      .setScale(1 / GROUND_ART_SCALE)
+      .setTint(greyTint(GROUND_BRIGHTNESS))
+      .setTintMode(Phaser.TintModes.MULTIPLY);
     this.layer.add(tile);
     this.tiles.push(tile);
     return tile;

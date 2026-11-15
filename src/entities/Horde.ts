@@ -17,6 +17,8 @@ export interface Navia {
   flash: number;
   /** Per-enemy offset so the crowd does not bob in unison. */
   phase: number;
+  /** Facing left, towards a hero on that side. */
+  flipped: boolean;
   dead: boolean;
   sprite: Phaser.GameObjects.Sprite;
   shadow: Phaser.GameObjects.Image;
@@ -27,7 +29,32 @@ interface Target {
   y: number;
 }
 
-const SWAY_FRAMES = 4;
+/** Cold multiply tint that sets the pale dead apart from the warm-toned hero. */
+const COLD_TINT = 0xd6f2ff;
+/** Where the shadow falls below a navia's position; she floats above it. */
+const SHADOW_Y = 18;
+/** How far the figure is lifted above its position, before the bob. */
+const LIFT = 4;
+/** Shadow width in world units; small and faint, as she floats. */
+const SHADOW_WIDTH = 24;
+/**
+ * The art flies forward and up at about this angle (negative is up the
+ * screen), so a sprite rotated by `elevation - ART_LEAN` heads along
+ * `elevation`.
+ */
+const ART_LEAN = Phaser.Math.DegToRad(-30);
+/** Tilt limits, so steep approaches lean the figure without standing it on end. */
+const TILT_MIN = Phaser.Math.DegToRad(-35);
+const TILT_MAX = Phaser.Math.DegToRad(50);
+/**
+ * Amplitude of the idle rotation wobble. Kept small: the baked shroud ripple
+ * already carries the motion, and a wider sway rocks the still head with it.
+ */
+const WOBBLE = Phaser.Math.DegToRad(2);
+/** Per-enemy ripple speed varies by up to this fraction either way, so the crowd falls out of step. */
+const RIPPLE_SPEED_SPREAD = 0.15;
+/** How far the hero must be to one side before a navia turns, to avoid flicker. */
+const TURN_DEADZONE = 2;
 
 /** All living enemies: spawning, movement, crowding and their sprites. */
 export class Horde {
@@ -53,7 +80,6 @@ export class Horde {
     if (this.list.length >= CFG.spawn.maxEnemies) return;
     const cfg = CFG.navia;
     const sprite = this.takeSprite();
-    sprite.play({ key: ANIM.naviaSway, startFrame: Math.floor(Math.random() * SWAY_FRAMES) });
     this.list.push({
       x,
       y,
@@ -64,6 +90,7 @@ export class Horde {
       ky: 0,
       flash: 0,
       phase: Math.random() * 4,
+      flipped: false,
       dead: false,
       sprite,
       shadow: this.takeShadow(),
@@ -90,7 +117,7 @@ export class Horde {
         const angle = Math.random() * Math.PI * 2;
         navia.x = target.x + Math.cos(angle) * respawnRadius;
         navia.y = target.y + Math.sin(angle) * respawnRadius;
-        this.place(navia, clock);
+        this.place(navia, clock, target);
         continue;
       }
 
@@ -127,9 +154,9 @@ export class Horde {
 
       if (navia.flash > 0) {
         navia.flash -= dt;
-        if (navia.flash <= 0) navia.sprite.setTintMode(Phaser.TintModes.MULTIPLY);
+        if (navia.flash <= 0) navia.sprite.setTint(COLD_TINT).setTintMode(Phaser.TintModes.MULTIPLY);
       }
-      this.place(navia, clock);
+      this.place(navia, clock, target);
     }
     return touching;
   }
@@ -154,7 +181,8 @@ export class Horde {
         this.list[alive++] = navia;
         continue;
       }
-      navia.sprite.stop().setVisible(false).setTintMode(Phaser.TintModes.MULTIPLY);
+      // Hidden sprites still tick their animation, so stop it until reuse.
+      navia.sprite.stop().setVisible(false);
       navia.shadow.setVisible(false);
       this.spritePool.push(navia.sprite);
       this.shadowPool.push(navia.shadow);
@@ -162,16 +190,47 @@ export class Horde {
     this.list.length = alive;
   }
 
-  private place(navia: Navia, clock: number): void {
+  /** Turns the navia towards the target and tilts her along her approach. */
+  private place(navia: Navia, clock: number, target: Target): void {
+    const dx = target.x - navia.x;
+    const dy = target.y - navia.y;
+    if (Math.abs(dx) > TURN_DEADZONE) navia.flipped = dx < 0;
+
+    // Elevation of the approach above or below horizontal, positive heading
+    // down the screen. The art already leans up, so tilt by the difference.
+    const elevation = Math.atan2(dy, Math.abs(dx));
+    const tilt = Phaser.Math.Clamp(elevation - ART_LEAN, TILT_MIN, TILT_MAX);
+    const wobble = Math.sin(clock * 2.6 + navia.phase * 2.3) * WOBBLE;
     const bob = Math.sin(clock * 4 + navia.phase * 1.7) * 1.5;
-    navia.sprite.setPosition(navia.x, navia.y - 2 + bob).setDepth(navia.y);
-    navia.shadow.setPosition(navia.x, navia.y + 17);
+
+    navia.sprite
+      .setPosition(navia.x, navia.y - LIFT + bob)
+      // A flipped sprite is mirrored, so the same tilt must turn the other way.
+      .setRotation((navia.flipped ? -tilt : tilt) + wobble)
+      .setFlipX(navia.flipped)
+      // Sorted by the point under her, where her shadow falls.
+      .setDepth(navia.y + SHADOW_Y);
+    navia.shadow.setPosition(navia.x, navia.y + SHADOW_Y);
   }
 
+  /**
+   * A sprite from the pool or a new one, with the resting tint and the
+   * ripple restarted (on a random frame, see createAnimations) at a slightly
+   * random speed.
+   */
   private takeSprite(): Phaser.GameObjects.Sprite {
-    const pooled = this.spritePool.pop();
-    if (pooled) return pooled.setVisible(true);
-    const sprite = this.scene.add.sprite(0, 0, TEX.navia, 0).setScale(1 / ART_SCALE);
+    const sprite = this.spritePool.pop()?.setVisible(true) ?? this.addSprite();
+    return sprite
+      .setTint(COLD_TINT)
+      .setTintMode(Phaser.TintModes.MULTIPLY)
+      .play({
+        key: ANIM.naviaFly,
+        timeScale: 1 + Phaser.Math.FloatBetween(-RIPPLE_SPEED_SPREAD, RIPPLE_SPEED_SPREAD),
+      });
+  }
+
+  private addSprite(): Phaser.GameObjects.Sprite {
+    const sprite = this.scene.add.sprite(0, 0, TEX.navia).setScale(1 / ART_SCALE);
     this.entityLayer.add(sprite);
     return sprite;
   }
@@ -179,7 +238,7 @@ export class Horde {
   private takeShadow(): Phaser.GameObjects.Image {
     const pooled = this.shadowPool.pop();
     if (pooled) return pooled.setVisible(true);
-    const shadow = this.scene.add.image(0, 0, TEX.shadow).setScale(20 / 28 / ART_SCALE).setAlpha(0.38);
+    const shadow = this.scene.add.image(0, 0, TEX.shadow).setScale(SHADOW_WIDTH / 28 / ART_SCALE).setAlpha(0.3);
     this.shadowLayer.add(shadow);
     return shadow;
   }

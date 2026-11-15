@@ -18,6 +18,12 @@ interface Stake {
 /** Longest distance a stake moves between hit checks, to avoid tunnelling. */
 const MAX_STEP = 10;
 const HIT_RADIUS = 5;
+/**
+ * The pivot in the stake texture, as a fraction of its size: on the shaft's
+ * centre line at the red thread near the butt, so the stake leaves the hero
+ * point first and turns about where it would be held.
+ */
+const GRIP = { x: 0.2, y: 0.49 };
 
 /**
  * The starting weapon: fires on its own at the nearest navia and pierces
@@ -128,8 +134,7 @@ export class AspenStake {
   }
 
   private addSprite(): Phaser.GameObjects.Image {
-    // The grip sits 14 of 30 units from the left edge of the texture.
-    const sprite = this.scene.add.image(0, 0, TEX.stake).setOrigin(14 / 30, 0.5).setScale(1 / ART_SCALE);
+    const sprite = this.scene.add.image(0, 0, TEX.stake).setOrigin(GRIP.x, GRIP.y).setScale(1 / ART_SCALE);
     this.layer.add(sprite);
     return sprite;
   }

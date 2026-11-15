@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { DPR, canvasSize } from './display';
 import { CFG } from './config';
+import { debugFlags } from './debug/FootprintDebug';
+import { NIGHT } from './night/config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
-import { OverlayScene } from './scenes/OverlayScene';
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
@@ -16,8 +17,7 @@ const game = new Phaser.Game({
     ...canvasSize(),
     zoom: 1 / DPR,
   },
-  // Later scenes render on top of earlier ones.
-  scene: [BootScene, GameScene, OverlayScene],
+  scene: [BootScene, GameScene],
 });
 
 window.addEventListener('resize', () => {
@@ -31,8 +31,19 @@ if (import.meta.env.DEV) {
     __morok: {
       game,
       CFG,
+      // Overlays: __morok.debug.footprints = true outlines the scenery's
+      // footprints and the hero's contact circle.
+      debug: debugFlags,
       get state() {
         return (game.scene.getScene('Game') as GameScene).stats;
+      },
+      // The night filter: __morok.night.config.fog.cell = 120.
+      night: {
+        config: NIGHT,
+        /** The filter itself; `.active = false` shows the bare scene. */
+        get filter() {
+          return (game.scene.getScene('Game') as GameScene).night;
+        },
       },
     },
   });
