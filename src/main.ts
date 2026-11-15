@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DPR, canvasSize } from './display';
+import { BootScene } from './scenes/BootScene';
 
 const game = new Phaser.Game({
   type: Phaser.WEBGL,
@@ -12,7 +13,7 @@ const game = new Phaser.Game({
     ...canvasSize(),
     zoom: 1 / DPR,
   },
-  scene: [],
+  scene: [BootScene],
 });
 
 window.addEventListener('resize', () => {
