@@ -6,5 +6,8 @@ dist/
 # Throwaway canvas sketch kept locally for reference
 prototype/
 
+# Unsorted generated art; approved originals go to art/source/
+art/drafts/
+
 # Local tool state
 .impeccable/
