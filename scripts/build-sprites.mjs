@@ -13,13 +13,16 @@
  * one canvas and registration, plus a JSON file with the frame size and
  * count for the game to load it by.
  *
+ * Poses too different in size to share a frame (see UPYR) are packed into
+ * an atlas instead, each trimmed on its own with its ground point as pivot.
+ *
  * The ground tile is resized on its own, keeping its seams; see GROUND.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { backdropMask, cutOut, isolateFigure, splitFigures, upperBodyAnchor } from './cutout.mjs';
+import { backdropMask, cutOut, groundPoint, isolateFigure, splitFigures, upperBodyAnchor } from './cutout.mjs';
 import { rippleReach, warpRipple } from './ripple.mjs';
 
 /** Must match ART_SCALE in src/art/scale.ts. */
@@ -94,6 +97,38 @@ const KURGAN_SHEET = {
   // The smallest prop is some 24000 pixels; loose pebbles and bones of
   // up to 3000 pixels join the nearest prop. Rows are 512 pixels apart.
   split: { minArea: 15000, minSpeck: 4, rowGap: 200 },
+};
+
+/**
+ * The upyr: seven poses on a plain white backdrop, a row of four and a row
+ * of three, read like text: a prowl of four frames, the wind-up, the lunge
+ * and the landing. They differ too much in size and shape to share one
+ * frame, so each is trimmed on its own and packed into an atlas, with its
+ * ground point (see groundPoint in scripts/cutout.mjs) as the frame's
+ * pivot; stood on one spot, the poses do not jump between frames.
+ */
+const UPYR = {
+  source: 'upyr.png',
+  output: 'upyr',
+  /** Frame names in reading order of the sheet. */
+  frames: ['prowl-1', 'prowl-2', 'prowl-3', 'prowl-4', 'wind-up', 'lunge', 'landing'],
+  /** The tallest of these frames is `height` world units; every frame shares its scale. */
+  sizedBy: ['prowl-1', 'prowl-2', 'prowl-3', 'prowl-4'],
+  height: 46,
+  cut: {
+    backdrop: {
+      minLight: 236,
+      maxSpread: 8,
+      // Every neutral light pocket on this sheet is backdrop: inside the
+      // curled hands, through the open mouth, and slivers between the hair
+      // strands under the chin. The eyes and teeth are painted cream,
+      // outside the neutral range, so they stay whatever their size.
+      minPocket: 1,
+    },
+    edge: { band: 2, backdrop: 249, ink: 28, maxSpread: 28 },
+    // The smallest pose is some 68000 pixels; the rows are 460 apart.
+    split: { minArea: 20000, minSpeck: 4, rowGap: 200 },
+  },
 };
 
 /**
@@ -252,6 +287,19 @@ async function buildRippleStrip({ source, output, width, height, ripple }, image
 }
 
 /**
+ * Cuts a sheet on a light backdrop into figures in reading order (see
+ * scripts/cutout.mjs) and checks that it holds the expected number.
+ */
+async function cutSheet(source, { backdrop, edge, split }, count) {
+  const { data, info } = await sharp(join(sourceDir, source)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const mask = backdropMask(data, info.width, info.height, info.channels, backdrop);
+  const rgba = cutOut(data, info.width, info.height, info.channels, mask, edge);
+  const { labels, figures } = splitFigures(rgba, info.width, info.height, split);
+  if (figures.length !== count) throw new Error(`${source}: expected ${count} figures, found ${figures.length}`);
+  return { rgba, labels, figures, info };
+}
+
+/**
  * Cuts the poses out of a sheet (see scripts/cutout.mjs) and stacks them
  * pinned by the upper body, so the parts that do not move in the drawing
  * do not jitter in the game. All frames are trimmed to the union of their
@@ -259,16 +307,7 @@ async function buildRippleStrip({ source, output, width, height, ripple }, image
  * SPRITES.
  */
 async function buildSheetStrip({ source, output, width, height, sheet }) {
-  const { data, info } = await sharp(join(sourceDir, source))
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const backdrop = backdropMask(data, info.width, info.height, info.channels, sheet.backdrop);
-  const rgba = cutOut(data, info.width, info.height, info.channels, backdrop, sheet.edge);
-  const { labels, figures } = splitFigures(rgba, info.width, info.height, sheet.split);
-  if (figures.length !== sheet.frames) {
-    throw new Error(`${source}: expected ${sheet.frames} figures, found ${figures.length}`);
-  }
+  const { rgba, labels, figures, info } = await cutSheet(source, sheet, sheet.frames);
 
   const anchors = figures.map((figure) => upperBodyAnchor(labels, info.width, figure));
   const box = unionBounds(
@@ -355,6 +394,15 @@ async function buildScenery({ output, sheets }) {
   const props = [];
   for (const sheet of sheets) props.push(...(await cutScenerySheet(sheet)));
 
+  await writeAtlas('scenery', output, props);
+}
+
+/**
+ * Packs raw RGBA images into an atlas and writes it with a JSON file of
+ * frame rectangles in the format Phaser loads atlases from, plus the
+ * frame's pivot for images that have one.
+ */
+async function writeAtlas(source, output, props) {
   const { width, height, placed } = packShelves(props, ATLAS_WIDTH, GUTTER);
   const atlas = Buffer.alloc(width * height * 4);
   for (const { prop, x, y } of placed) {
@@ -371,21 +419,58 @@ async function buildScenery({ output, sheets }) {
   for (const prop of props) {
     const { x, y } = placed.find((p) => p.prop === prop);
     frames[prop.name] = { frame: { x, y, w: prop.width, h: prop.height } };
+    if (prop.pivot) frames[prop.name].pivot = prop.pivot;
   }
   await writeFile(join(outputDir, `${output}.json`), `${JSON.stringify({ frames }, null, 2)}\n`);
-  console.log(`scenery -> src/art/sprites/${output}.png ${width}x${height}, src/art/sprites/${output}.json`);
-  for (const prop of props) console.log(`  ${prop.name} ${prop.width}x${prop.height}`);
+  console.log(`${source} -> src/art/sprites/${output}.png ${width}x${height}, src/art/sprites/${output}.json`);
+  for (const prop of props) {
+    const pivot = prop.pivot ? ` pivot ${prop.pivot.x}, ${prop.pivot.y}` : '';
+    console.log(`  ${prop.name} ${prop.width}x${prop.height}${pivot}`);
+  }
+}
+
+/**
+ * Cuts every pose out of a sheet, trims each on its own and packs them into
+ * an atlas. All poses share one scale, set by the tallest of `sizedBy`, and
+ * each frame pivots on its ground point, as a fraction of the frame.
+ */
+async function buildPoseAtlas({ source, output, frames, sizedBy, height, cut }) {
+  const { rgba, labels, figures, info } = await cutSheet(source, cut, frames.length);
+  const poses = figures.map((figure, i) => {
+    const canvas = { width: figure.right - figure.left, height: figure.bottom - figure.top };
+    const corner = { x: figure.left, y: figure.top };
+    const image = isolateFigure(rgba, labels, info.width, figure, corner, canvas, { x: 0, y: 0 });
+    const bounds = opaqueBounds(image, canvas.width, canvas.height);
+    const ground = groundPoint(image, canvas.width, canvas.height, TRIM_ALPHA);
+    return { name: frames[i], image, canvas, bounds, ground };
+  });
+
+  const tallest = Math.max(...poses.filter((p) => sizedBy.includes(p.name)).map((p) => p.bounds.height));
+  const scale = (height * ART_SCALE) / tallest;
+  const props = [];
+  for (const { name, image, canvas, bounds, ground } of poses) {
+    const size = { width: Math.round(bounds.width * scale), height: Math.round(bounds.height * scale) };
+    const data = await sharp(image, { raw: { ...canvas, channels: 4 } })
+      .extract(bounds)
+      .resize({ ...size, fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .raw()
+      .toBuffer();
+    const pivot = {
+      x: round4((ground.x - bounds.left) / bounds.width),
+      y: round4((ground.y - bounds.top) / bounds.height),
+    };
+    props.push({ name, data, ...size, pivot });
+  }
+  await writeAtlas(source, output, props);
+}
+
+function round4(value) {
+  return Math.round(value * 10000) / 10000;
 }
 
 /** The taken props of one sheet as raw RGBA images at their game size. */
 async function cutScenerySheet({ source, take }) {
-  const { data, info } = await sharp(join(sourceDir, source)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  const backdrop = backdropMask(data, info.width, info.height, info.channels, KURGAN_SHEET.backdrop);
-  const rgba = cutOut(data, info.width, info.height, info.channels, backdrop, KURGAN_SHEET.edge);
-  const { labels, figures } = splitFigures(rgba, info.width, info.height, KURGAN_SHEET.split);
-  if (figures.length !== SCENERY_SHEET_FRAMES) {
-    throw new Error(`${source}: expected ${SCENERY_SHEET_FRAMES} figures, found ${figures.length}`);
-  }
+  const { rgba, labels, figures, info } = await cutSheet(source, KURGAN_SHEET, SCENERY_SHEET_FRAMES);
 
   const props = [];
   for (const [frame, { name, width, height }] of Object.entries(take)) {
@@ -469,3 +554,4 @@ await mkdir(outputDir, { recursive: true });
 for (const sprite of SPRITES) await buildSprite(sprite);
 await buildGround(GROUND);
 await buildScenery(SCENERY);
+await buildPoseAtlas(UPYR);

@@ -244,6 +244,30 @@ export function upperBodyAnchor(labels, width, figure) {
 }
 
 /**
+ * The point on the ground under a figure, in pixels of its RGBA image: the
+ * alpha-weighted mean column, so the body's mass stands over it whatever
+ * the limbs do, on the lowest row with a pixel above `minAlpha`, where the
+ * feet meet the ground. Poses of different sizes stacked on this point
+ * stand on the same spot.
+ */
+export function groundPoint(rgba, width, height, minAlpha) {
+  let sum = 0;
+  let weight = 0;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = rgba[(y * width + x) * 4 + 3];
+      sum += x * alpha;
+      weight += alpha;
+      if (alpha > minAlpha) bottom = y;
+    }
+  }
+  if (bottom < 0) throw new Error('image is fully transparent');
+  // The middle of the column, and the bottom edge of the lowest row.
+  return { x: sum / weight + 0.5, y: bottom + 1 };
+}
+
+/**
  * One figure copied out of the cut-out sheet onto a transparent RGBA canvas
  * of the given size, with its anchor at `at`. Pixels of other figures that
  * reach into its bounds are left out.

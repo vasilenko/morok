@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { ART_SCALE, TEX } from '../art/textures';
 import { CFG } from '../config';
-import type { Horde, Navia } from '../entities/Horde';
+import type { Enemy } from '../entities/enemy';
+import type { Horde } from '../entities/Horde';
 import type { Fx } from '../fx/Fx';
 
 interface Stake {
@@ -11,7 +12,7 @@ interface Stake {
   dy: number;
   life: number;
   pierce: number;
-  hit: Set<Navia>;
+  hit: Set<Enemy>;
   sprite: Phaser.GameObjects.Image;
 }
 
@@ -26,7 +27,7 @@ const HIT_RADIUS = 5;
 const GRIP = { x: 0.2, y: 0.49 };
 
 /**
- * The starting weapon: fires on its own at the nearest navia and pierces
+ * The starting weapon: fires on its own at the nearest enemy and pierces
  * through a few of them.
  */
 export class AspenStake {
@@ -69,22 +70,22 @@ export class AspenStake {
     return kills;
   }
 
-  private nearest(origin: { x: number; y: number }): Navia | null {
-    let best: Navia | null = null;
+  private nearest(origin: { x: number; y: number }): Enemy | null {
+    let best: Enemy | null = null;
     let bestD2 = CFG.stake.range * CFG.stake.range;
-    for (const navia of this.horde.list) {
-      const dx = navia.x - origin.x;
-      const dy = navia.y - origin.y;
+    for (const enemy of this.horde.list) {
+      const dx = enemy.x - origin.x;
+      const dy = enemy.y - origin.y;
       const d2 = dx * dx + dy * dy;
       if (d2 < bestD2) {
         bestD2 = d2;
-        best = navia;
+        best = enemy;
       }
     }
     return best;
   }
 
-  private fire(origin: { x: number; y: number }, target: Navia): void {
+  private fire(origin: { x: number; y: number }, target: Enemy): void {
     const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
     const sprite = this.pool.pop()?.setVisible(true) ?? this.addSprite();
     sprite.setPosition(origin.x, origin.y).setRotation(angle);
@@ -110,19 +111,19 @@ export class AspenStake {
     for (let i = 0; i < steps && stake.pierce > 0; i++) {
       stake.x += stake.dx * step;
       stake.y += stake.dy * step;
-      this.horde.grid.forEachNear(stake.x, stake.y, (navia) => {
-        if (navia.dead || stake.hit.has(navia)) return;
-        const ex = navia.x - stake.x;
-        const ey = navia.y - stake.y;
-        const reach = navia.radius + HIT_RADIUS;
+      this.horde.grid.forEachNear(stake.x, stake.y, (enemy) => {
+        if (enemy.dead || stake.hit.has(enemy)) return;
+        const ex = enemy.x - stake.x;
+        const ey = enemy.y - stake.y;
+        const reach = enemy.radius + HIT_RADIUS;
         if (ex * ex + ey * ey > reach * reach) return;
 
-        stake.hit.add(navia);
+        stake.hit.add(enemy);
         stake.pierce--;
         this.fx.splinters(stake.x, stake.y);
-        if (this.horde.damage(navia, cfg.damage, stake.dx * cfg.knockback, stake.dy * cfg.knockback)) {
+        if (this.horde.damage(enemy, cfg.damage, stake.dx * cfg.knockback, stake.dy * cfg.knockback)) {
           kills++;
-          this.fx.wisps(navia.x, navia.y);
+          this.fx.wisps(enemy.x, enemy.y);
         }
         return stake.pierce <= 0;
       });

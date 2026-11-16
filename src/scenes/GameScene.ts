@@ -3,11 +3,13 @@ import { CFG } from '../config';
 import { FootprintDebug } from '../debug/FootprintDebug';
 import { DPR } from '../display';
 import { Horde } from '../entities/Horde';
+import { NAVIA } from '../entities/navia';
+import { UPYR } from '../entities/upyr';
 import { Player } from '../entities/Player';
 import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
 import { addNight, type NightFilter } from '../night/NightFilter';
-import { WaveDirector } from '../systems/WaveDirector';
+import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
 import { Ground } from '../world/Ground';
@@ -146,16 +148,24 @@ export class GameScene extends Phaser.Scene {
     const spawnRadius = this.spawnRadius;
     this.director.update(dt, this.elapsed, (angle, extraDistance) => {
       const distance = spawnRadius + extraDistance;
-      this.horde.spawn(player.x + Math.cos(angle) * distance, player.y + Math.sin(angle) * distance, this.elapsed);
+      const kind = spawnsUpyr(this.elapsed, Math.random(), CFG.upyr) ? UPYR : NAVIA;
+      this.horde.spawn(player.x + Math.cos(angle) * distance, player.y + Math.sin(angle) * distance, this.elapsed, kind);
     });
 
-    const touched = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7);
+    const contact = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7, this.strike);
     this.kills += this.stake.update(dt, player);
     this.horde.removeDead();
 
-    if (touched && player.hurt(CFG.navia.damage)) this.onPlayerHurt();
+    if (contact > 0 && player.hurt(contact)) this.onPlayerHurt();
     ui.update(this.stats);
   }
+
+  /** An enemy's attack reaches the hero. Returns whether it landed. */
+  private readonly strike = (damage: number): boolean => {
+    if (!this.player.hurt(damage)) return false;
+    this.onPlayerHurt();
+    return true;
+  };
 
   private onPlayerHurt(): void {
     this.cameras.main.shake(260, 0.006);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SpawnConfig } from '../config';
-import { WaveDirector, type WaveEvent } from './WaveDirector';
+import { spawnsUpyr, WaveDirector, type WaveEvent } from './WaveDirector';
 
 const cfg: SpawnConfig = {
   trickle: 2,
@@ -73,5 +73,26 @@ describe('WaveDirector', () => {
     expect(waves[0]).toEqual({ wave: 1, ring: true, count: 8 });
     const gaps = angles.slice(1).map((angle, i) => angle - angles[i]);
     for (const gap of gaps) expect(gap).toBeCloseTo((Math.PI * 2) / 8);
+  });
+});
+
+describe('spawnsUpyr', () => {
+  const upyr = { appearsAt: 45, share: 1 / 8 };
+
+  it('never spawns an upyr before it appears', () => {
+    expect(spawnsUpyr(0, 0, upyr)).toBe(false);
+    expect(spawnsUpyr(44.9, 0, upyr)).toBe(false);
+  });
+
+  it('spawns an upyr for rolls under its share once it has appeared', () => {
+    expect(spawnsUpyr(45, 0, upyr)).toBe(true);
+    expect(spawnsUpyr(300, 0.124, upyr)).toBe(true);
+    expect(spawnsUpyr(300, 0.125, upyr)).toBe(false);
+    expect(spawnsUpyr(300, 0.99, upyr)).toBe(false);
+  });
+
+  it('makes about one enemy in eight an upyr', () => {
+    const rolls = Array.from({ length: 800 }, (_, i) => (i + 0.5) / 800);
+    expect(rolls.filter((roll) => spawnsUpyr(60, roll, upyr)).length).toBe(100);
   });
 });

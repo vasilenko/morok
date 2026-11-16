@@ -1,4 +1,4 @@
-import type { SpawnConfig } from '../config';
+import type { SpawnConfig, UpyrConfig } from '../config';
 
 const TAU = Math.PI * 2;
 
@@ -58,4 +58,17 @@ export class WaveDirector {
     }
     return { wave: this.wave, ring, count };
   }
+}
+
+/**
+ * Whether the enemy spawned now is an upyr rather than a navia: never
+ * before `appearsAt` seconds into the run, then with a chance of `share`.
+ * `roll` is a uniform random number in [0, 1).
+ */
+export function spawnsUpyr(
+  elapsed: number,
+  roll: number,
+  { appearsAt, share }: Pick<UpyrConfig, 'appearsAt' | 'share'>,
+): boolean {
+  return elapsed >= appearsAt && roll < share;
 }

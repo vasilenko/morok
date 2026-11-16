@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { backdropMask, cutOut, labelComponents, readingOrder, splitFigures, upperBodyAnchor } from './cutout.mjs';
+import {
+  backdropMask,
+  cutOut,
+  groundPoint,
+  labelComponents,
+  readingOrder,
+  splitFigures,
+  upperBodyAnchor,
+} from './cutout.mjs';
 
 const LIGHT = [253, 253, 253];
 const INK = [20, 20, 20];
@@ -134,5 +142,38 @@ describe('upperBodyAnchor', () => {
     const { labels, components } = labelComponents(mask, width, 10);
     const figure = { ...components[0], labels: [components[0].label] };
     expect(upperBodyAnchor(labels, width, figure)).toEqual({ x: 4, y: 1 });
+  });
+});
+
+describe('groundPoint', () => {
+  /** Transparent RGBA of the given size with rectangles of the given alpha. */
+  function alphaImage(width, height, rects) {
+    const rgba = Buffer.alloc(width * height * 4);
+    for (const [left, top, w, h, alpha] of rects) {
+      for (let y = top; y < top + h; y++) {
+        for (let x = left; x < left + w; x++) rgba[(y * width + x) * 4 + 3] = alpha;
+      }
+    }
+    return rgba;
+  }
+
+  it('stands under the mass of the body on the bottom edge of the lowest row', () => {
+    // A heavy body over columns 2..5 and a thin leg reaching down at column 8.
+    const rgba = alphaImage(10, 10, [
+      [2, 0, 4, 6, 255],
+      [8, 0, 1, 8, 255],
+    ]);
+    const point = groundPoint(rgba, 10, 10, 8);
+    expect(point.y).toBe(8);
+    // 24 pixels centred on 4 and 8 on 8.5: the middle of the mass, not of the bounds.
+    expect(point.x).toBeCloseTo((24 * 4 + 8 * 8.5) / 32);
+  });
+
+  it('ignores faint pixels below the feet when finding the ground', () => {
+    const rgba = alphaImage(4, 6, [
+      [0, 0, 4, 3, 255],
+      [0, 5, 4, 1, 5],
+    ]);
+    expect(groundPoint(rgba, 4, 6, 8).y).toBe(3);
   });
 });

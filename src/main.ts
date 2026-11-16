@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { DPR, canvasSize } from './display';
 import { CFG } from './config';
 import { debugFlags } from './debug/FootprintDebug';
+import { NAVIA } from './entities/navia';
+import { UPYR } from './entities/upyr';
 import { NIGHT } from './night/config';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
@@ -34,6 +36,10 @@ if (import.meta.env.DEV) {
       // Overlays: __morok.debug.footprints = true outlines the scenery's
       // footprints and the hero's contact circle.
       debug: debugFlags,
+      // Enemy kinds, to spawn one by hand:
+      // scene.horde.spawn(x, y, 0, __morok.kinds.upyr), where scene is
+      // __morok.game.scene.getScene('Game').
+      kinds: { navia: NAVIA, upyr: UPYR },
       get state() {
         return (game.scene.getScene('Game') as GameScene).stats;
       },

@@ -5,6 +5,8 @@ import naviaUrl from './sprites/navia.png';
 import sceneryAtlas from './sprites/scenery.json';
 import sceneryUrl from './sprites/scenery.png';
 import stakeUrl from './sprites/stake.png';
+import upyrAtlas from './sprites/upyr.json';
+import upyrUrl from './sprites/upyr.png';
 import volhvSheet from './sprites/volhv-walk.json';
 import volhvUrl from './sprites/volhv-walk.png';
 import { ART_SCALE, GROUND_ART_SCALE } from './scale';
@@ -22,6 +24,7 @@ export const GROUND_TILE = 512;
 
 export const TEX = {
   navia: 'navia',
+  upyr: 'upyr',
   volhv: 'volhv',
   stake: 'stake',
   shadow: 'shadow',
@@ -32,6 +35,7 @@ export const TEX = {
 
 export const ANIM = {
   naviaFly: 'navia-fly',
+  upyrProwl: 'upyr-prowl',
   volhvWalk: 'volhv-walk',
 } as const;
 
@@ -57,6 +61,21 @@ export const VOLHV_FRAMES = {
   /** Where the weight sinks onto the leading leg, twice per cycle. */
   firstDown: 1,
   count: volhvSheet.frameCount,
+} as const;
+
+/**
+ * Playback rate of the upyr's prowl: four frames, two steps, per cycle. A
+ * step covers some 30 units, so the feet would only hold the ground at its
+ * 60 units/s at 4 fps, which stutters; like the volhv's, its feet slide a
+ * little in exchange for a smoother gait.
+ */
+const UPYR_PROWL_FPS = 6;
+
+/** Frames of the upyr atlas held while attacking; each pivots on its ground point. */
+export const UPYR_FRAMES = {
+  windUp: 'wind-up',
+  lunge: 'lunge',
+  landing: 'landing',
 } as const;
 
 const TAU = Math.PI * 2;
@@ -124,6 +143,7 @@ export function loadSprites(load: Phaser.Loader.LoaderPlugin): void {
     frameWidth: naviaSheet.frameWidth,
     frameHeight: naviaSheet.frameHeight,
   });
+  load.atlas(TEX.upyr, upyrUrl, upyrAtlas);
   load.image(TEX.stake, stakeUrl);
   load.image(TEX.ground, groundUrl);
   load.atlas(TEX.scenery, sceneryUrl, sceneryAtlas);
@@ -137,6 +157,14 @@ export function createAnimations(anims: Phaser.Animations.AnimationManager): voi
     frameRate: NAVIA_FPS,
     repeat: -1,
     // Each play starts on a random frame, so the crowd does not ripple in step.
+    randomFrame: true,
+  });
+  anims.create({
+    key: ANIM.upyrProwl,
+    frames: anims.generateFrameNames(TEX.upyr, { prefix: 'prowl-', start: 1, end: 4 }),
+    frameRate: UPYR_PROWL_FPS,
+    repeat: -1,
+    // Out of step with each other, like the navii.
     randomFrame: true,
   });
   anims.create({
