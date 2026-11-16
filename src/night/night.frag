@@ -28,6 +28,7 @@ uniform float uAmbient;
 uniform vec3 uWarm;
 uniform vec3 uCold;
 uniform float uGlow;
+uniform float uGlowHue;
 
 // The skull lantern: its eye in framebuffer pixels, the beam's direction on
 // the ground plane (unit, y down), the exponent of its angular fall-off, and
@@ -55,6 +56,32 @@ uniform float uFogAlpha;
 uniform vec3 uFogColor;
 uniform float uFogCoverage;
 uniform float uFogSoftness;
+
+// The heat of the sparks' fires (FireHeat): a map laid on the world, its
+// red channel the summed heat, its green the coals' auras. uHeatOrigin is
+// the world offset of the framebuffer's top-left corner from the map's,
+// uHeatSize the map's size, both in world units. The heat thins the fog,
+// up to uHeatCap, and throws uFireLight of light tinted uFireColor, taken
+// uFireTint of the way to the colour of the grades whose heat it is: its
+// blue channel over its red is their mean grade, 0 for the lowest and 1
+// for the highest of the four, uGradeColor0 to uGradeColor3;
+// within an aura, what is bright is lit by up to uAuraLight of untinted
+// light, so it keeps its own colour; a pixel's brightest channel decides
+// how bright, between uAuraFrom and uAuraTo.
+uniform sampler2D uHeat;
+uniform vec2 uHeatOrigin;
+uniform vec2 uHeatSize;
+uniform float uHeatCap;
+uniform float uFireLight;
+uniform vec3 uFireColor;
+uniform float uFireTint;
+uniform vec3 uGradeColor0;
+uniform vec3 uGradeColor1;
+uniform vec3 uGradeColor2;
+uniform vec3 uGradeColor3;
+uniform float uAuraLight;
+uniform float uAuraFrom;
+uniform float uAuraTo;
 
 uniform float uGrain;
 uniform float uGrainSize;
@@ -142,6 +169,7 @@ void main ()
 
     vec3 source = texture2D(uMainSampler, outTexCoord).rgb;
     float lum = luma(source);
+    float peak = max(source.r, max(source.g, source.b));
 
     // The hero's light: full within lightInner world units, gone at
     // lightOuter. The ellipse is squashed vertically.
@@ -162,13 +190,31 @@ void main ()
     float beam = min(uBeamIntensity, 1.0) * lobe
         * (1.0 - smoothstep(uBeamReach.x, uBeamReach.y, reach));
 
-    // Two lights add like light does: each lights a share of what the other
-    // leaves dark, so the sum is never below either and never above 1.
-    float light = 1.0 - (1.0 - pool) * (1.0 - beam);
+    // The sparks' fires: their summed heat here, which a framebuffer
+    // texture holds with y up. It is capped, so a crowd of fires never
+    // clears more than the cap however hot it gets.
+    vec2 onHeat = (uHeatOrigin + pixel / uZoom) / uHeatSize;
+    vec3 fires = texture2D(uHeat, vec2(onHeat.x, 1.0 - onHeat.y)).rgb;
+    float heat = min(fires.r, uHeatCap);
+    float fireLight = uFireLight * heat;
+    float grade = 3.0 * clamp(fires.b / max(fires.r, 0.004), 0.0, 1.0);
+    vec3 gradeColor = mix(uGradeColor0, uGradeColor1, clamp(grade, 0.0, 1.0));
+    gradeColor = mix(gradeColor, uGradeColor2, clamp(grade - 1.0, 0.0, 1.0));
+    gradeColor = mix(gradeColor, uGradeColor3, clamp(grade - 2.0, 0.0, 1.0));
+    vec3 fireColor = mix(uFireColor, gradeColor, uFireTint);
+    // The aura is full over the inner half of its blob, where the blob's
+    // (1 - r²)² is above a half, and fades out to its rim. It lights the
+    // coal and its sparks, which are bright, and leaves the dark soil.
+    float aura = uAuraLight * smoothstep(0.0, 0.5, fires.g) * smoothstep(uAuraFrom, uAuraTo, peak);
+
+    // The lights add like light does: each lights a share of what the
+    // others leave dark, so the sum is never below any and never above 1.
+    float light = 1.0 - (1.0 - pool) * (1.0 - beam) * (1.0 - fireLight) * (1.0 - aura);
     float dark = 1.0 - light;
-    // The tint of the light, from the warm pool to the orange fire by how
-    // much of it is the beam's.
-    vec3 lit = mix(uWarm, uBeamColor, beam / max(pool + beam, 0.001));
+    // The tint of the light: the colours of the warm pool, the orange beam
+    // and the fires, and the auras' white, each by its share of the light.
+    vec3 lit = (pool * uWarm + beam * uBeamColor + fireLight * fireColor + vec3(aura))
+        / max(pool + beam + fireLight + aura, 0.001);
 
     // Light and tint: warm where lit, cold in the dark, never fully black.
     vec3 color = source * (uAmbient + (1.0 - uAmbient) * light) * mix(uCold, lit, light);
@@ -187,15 +233,19 @@ void main ()
     }
 
     // Pale things keep a glow in the dark: lum squared lifts the navii and
-    // leaves the dark soil alone.
-    color += lum * lum * dark * uGlow * uCold;
+    // leaves the dark soil alone. The glow is cold, except that strongly
+    // coloured bright things keep some of their own hue in it. The hue is
+    // the colour scaled to a peak of 1, like the cold.
+    float saturation = (peak - min(source.r, min(source.g, source.b))) / max(peak, 0.001);
+    vec3 glowTint = mix(uCold, source / max(peak, 0.001), uGlowHue * smoothstep(0.4, 0.8, saturation));
+    color += lum * lum * dark * uGlow * glowTint;
 
-    // Fog in the dark, anchored to the world.
+    // Fog in the dark, anchored to the world, driven off by the fires.
     vec2 world = uFogOrigin + pixel / uZoom;
     float fog = fbm(world / uFogCell);
     float threshold = 1.0 - uFogCoverage;
     fog = smoothstep(threshold - uFogSoftness, threshold + uFogSoftness, fog);
-    color = mix(color, uFogColor, uFogAlpha * dark * fog);
+    color = mix(color, uFogColor, uFogAlpha * dark * fog * (1.0 - heat));
 
     // The fire in the skull's eye, laid over everything the night did, so
     // it burns on top of the hero in either facing: a small hot core in a

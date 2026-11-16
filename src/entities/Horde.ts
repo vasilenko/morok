@@ -127,14 +127,15 @@ export class Horde {
     return wound(enemy, amount);
   }
 
-  /** Drops the dead from the list and returns their sprites to the pools. */
-  removeDead(): void {
+  /** Drops the dead from the list, hands each to `fallen` and returns their sprites to the pools. */
+  removeDead(fallen: (enemy: Enemy) => void): void {
     let alive = 0;
     for (const enemy of this.list) {
       if (!enemy.dead) {
         this.list[alive++] = enemy;
         continue;
       }
+      fallen(enemy);
       // Hidden sprites still tick their animation, so stop it until reuse.
       enemy.sprite.stop().setVisible(false);
       enemy.shadow.setVisible(false);

@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
+import { GRADE_COLORS } from '../art/coals';
 import { DPR } from '../display';
 import { beamTarget, easeAngle } from './beam';
 import { NIGHT } from './config';
-import { eyeFire, flameWaver } from './flame';
+import { FireHeat } from './FireHeat';
+import { drainFlare, eyeFire, flameWaver, flareStrength } from './flame';
 import fragmentSource from './night.frag?raw';
 
 const NODE = 'FilterNight';
@@ -27,9 +29,16 @@ export class NightFilter extends Phaser.Filters.Controller {
   beamAngle = 0;
   /** Game time of the last hit, in seconds; the flash fades from it. */
   private hurtAt = -Infinity;
+  /** Heat stored from the sparks drunk in, in worth, as of game time `heatAt`. */
+  private heat = 0;
+  private heatAt = 0;
+
+  /** The heat of the sparks' fires, which thins the fog and lights the ground, and their coals' auras. */
+  readonly fires: FireHeat;
 
   constructor(camera: Phaser.Cameras.Scene2D.Camera) {
     super(camera, NODE);
+    this.fires = new FireHeat(camera.scene);
   }
 
   /**
@@ -52,6 +61,19 @@ export class NightFilter extends Phaser.Filters.Controller {
     this.hurtAt = this.now;
   }
 
+  /** The skull drinks in sparks worth `worth`: the fire in its eye flares. */
+  feed(worth: number): void {
+    const now = this.now;
+    this.heat = drainFlare(this.heat, now - this.heatAt, NIGHT.eye.flare.fade) + worth;
+    this.heatAt = now;
+  }
+
+  /** Strength of the eye's flare at this moment, 0..1. */
+  get flare(): number {
+    const flare = NIGHT.eye.flare;
+    return flareStrength(drainFlare(this.heat, this.now - this.heatAt, flare.fade), flare.knee);
+  }
+
   /** Real seconds since the game started, running while the scene is paused. */
   get now(): number {
     return this.camera.scene.game.loop.time / 1000;
@@ -69,6 +91,11 @@ export class NightFilter extends Phaser.Filters.Controller {
 class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
   constructor(manager: Phaser.Renderer.WebGL.RenderNodes.RenderNodeManager) {
     super(NODE, manager, undefined, fragmentSource);
+  }
+
+  setupTextures(controller: Phaser.Filters.Controller, textures: Phaser.Renderer.WebGL.Wrappers.WebGLTextureWrapper[]): void {
+    const heat = (controller as NightFilter).fires.glTexture;
+    if (heat) textures[1] = heat;
   }
 
   setupUniforms(controller: Phaser.Filters.Controller, drawingContext: Phaser.Renderer.WebGL.DrawingContext): void {
@@ -93,6 +120,7 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
     set('uWarm', NIGHT.warm);
     set('uCold', NIGHT.cold);
     set('uGlow', NIGHT.glow);
+    set('uGlowHue', NIGHT.glowHue);
 
     const beam = NIGHT.beam;
     const eye = view.transformPoint(night.eyeX, night.eyeY);
@@ -111,7 +139,7 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
     set('uBeamIntensity', beam.intensity * fire);
     set('uBeamColor', beam.color);
 
-    const glow = eyeFire(NIGHT.eye, waver);
+    const glow = eyeFire(NIGHT.eye, waver, night.flare);
     set('uEyeCore', NIGHT.eye.core);
     set('uEyeHalo', glow.halo);
     set('uEyeIntensity', glow.intensity);
@@ -133,6 +161,22 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
     set('uFogColor', fog.color);
     set('uFogCoverage', fog.coverage);
     set('uFogSoftness', fog.softness);
+
+    // The fires' heat map, placed by where the screen's corner lies on it,
+    // with the same world view as the fog, so the clearings stay with it.
+    const fires = night.fires;
+    set('uHeat', 1);
+    set('uHeatOrigin', [shown.x - fires.x, shown.y - fires.y]);
+    set('uHeatSize', [fires.width || 1, fires.height || 1]);
+    set('uHeatCap', NIGHT.fire.cap);
+    set('uFireLight', NIGHT.fire.light);
+    set('uFireColor', NIGHT.fire.color);
+    set('uFireTint', NIGHT.fire.tint);
+    GRADE_COLORS.forEach((color, grade) => set(`uGradeColor${grade}`, [...color]));
+    const aura = NIGHT.fire.aura;
+    set('uAuraLight', aura.light);
+    set('uAuraFrom', aura.from);
+    set('uAuraTo', aura.to);
 
     set('uGrain', NIGHT.grain.amount);
     set('uGrainSize', NIGHT.grain.size);

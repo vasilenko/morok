@@ -34,6 +34,7 @@ export const NAVIA: EnemyKind<null> = {
   // Small and faint, as she floats.
   shadowWidth: 24,
   shadowAlpha: 0.3,
+  groundY: SHADOW_Y,
 
   /** Later arrivals are a little faster. */
   create(elapsed) {
@@ -57,6 +58,8 @@ export const NAVIA: EnemyKind<null> = {
   anchored: () => false,
 
   contactDamage: () => CFG.navia.damage,
+
+  xp: () => CFG.navia.xp,
 
   /** The resting tint and the ripple restarted (on a random frame, see createAnimations) at a slightly random speed. */
   dress(sprite) {

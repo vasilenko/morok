@@ -46,21 +46,38 @@ export interface EyeFlame {
   flicker: number;
   breathe: number;
   shade: number;
+  flare: { intensity: number; halo: number };
 }
 
 /**
  * The fire in the eye socket at a moment of the flame (`waver`, -1..1):
  * its strength and halo radius swing by `flicker` and `breathe` around
  * their rest values, and the halo's colour runs from `emberColor` when the
- * flame sinks to `haloColor` when it flares.
+ * flame sinks to `haloColor` when it flares. A spark's flare (`flare`,
+ * 0..1) adds to the strength and the radius on top of the swing, so the
+ * flicker does not grow with it, and turns the fire to its hottest.
  */
-export function eyeFire(eye: EyeFlame, waver: number) {
+export function eyeFire(eye: EyeFlame, waver: number, flare = 0) {
   const w = Math.max(-1, Math.min(1, waver));
-  const heat = 0.5 + 0.5 * w;
+  const f = Math.max(0, Math.min(1, flare));
+  const heat = 1 - (0.5 - 0.5 * w) * (1 - f);
   return {
-    intensity: Math.max(0, eye.intensity * (1 + eye.flicker * w)),
-    halo: Math.max(0, eye.halo * (1 + eye.breathe * w)),
+    intensity: Math.max(0, eye.intensity * (1 + eye.flicker * w + eye.flare.intensity * f)),
+    halo: Math.max(0, eye.halo * (1 + eye.breathe * w + eye.flare.halo * f)),
     shade: Math.max(0, 1 - eye.shade * (1 - heat)),
     haloColor: eye.emberColor.map((ember, i) => ember + (eye.haloColor[i] - ember) * heat) as [number, number, number],
   };
+}
+
+/** The heat stored from sparks, `heat` in worth, after `seconds` of draining with time constant `fade`. */
+export function drainFlare(heat: number, seconds: number, fade: number): number {
+  if (fade <= 0) return 0;
+  // A clock that jumped back (a stepped loop in tests) must not grow it.
+  return heat * Math.exp(-Math.max(0, seconds) / fade);
+}
+
+/** The flare's strength (0..1) for the stored heat: rises with it and saturates. */
+export function flareStrength(heat: number, knee: number): number {
+  if (knee <= 0) return heat > 0 ? 1 : 0;
+  return 1 - Math.exp(-Math.max(0, heat) / knee);
 }

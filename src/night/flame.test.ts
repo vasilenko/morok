@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eyeFire, flameWaver } from './flame';
+import { drainFlare, eyeFire, flameWaver, flareStrength } from './flame';
 
 const STEP = 1 / 60;
 
@@ -63,6 +63,7 @@ describe('eyeFire', () => {
     flicker: 0.4,
     breathe: 0.2,
     shade: 0.6,
+    flare: { intensity: 1.5, halo: 0.8 },
   };
 
   it('rests at the configured values halfway between ember and flare', () => {
@@ -92,5 +93,66 @@ describe('eyeFire', () => {
   it('never goes past the ends of the swing', () => {
     expect(eyeFire(eye, 3)).toEqual(eyeFire(eye, 1));
     expect(eyeFire(eye, -3)).toEqual(eyeFire(eye, -1));
+  });
+
+  it('flares on top of the swing and turns to its hottest at full flare', () => {
+    const rest = eyeFire(eye, -1);
+    const full = eyeFire(eye, -1, 1);
+    expect(full.intensity - rest.intensity).toBeCloseTo(1.5);
+    expect(full.halo - rest.halo).toBeCloseTo(4);
+    expect(full.haloColor).toEqual([1, 0.5, 0.1]);
+    expect(full.shade).toBeCloseTo(1);
+    // The flicker swings by the same amount however hard it flares.
+    expect(eyeFire(eye, 1, 0.5).intensity - eyeFire(eye, -1, 0.5).intensity).toBeCloseTo(0.8);
+    expect(eyeFire(eye, 0, 3)).toEqual(eyeFire(eye, 0, 1));
+  });
+});
+
+describe('the flare from sparks', () => {
+  const FADE = 0.18;
+  const KNEE = 2.5;
+  /** Strength of the flare every frame for `seconds`, with sparks of `worth` arriving at `times`. */
+  function trace(times: number[], worth: number, seconds: number): number[] {
+    let heat = 0;
+    let at = 0;
+    let next = 0;
+    const values: number[] = [];
+    for (let i = 0; i <= seconds / STEP; i++) {
+      const t = i * STEP;
+      while (next < times.length && times[next] <= t + 1e-9) {
+        heat = drainFlare(heat, t - at, FADE) + worth;
+        at = t;
+        next++;
+      }
+      values.push(flareStrength(drainFlare(heat, t - at, FADE), KNEE));
+    }
+    return values;
+  }
+
+  it('flashes harder for a larger spark, and never past full', () => {
+    const small = flareStrength(1, KNEE);
+    const large = flareStrength(5, KNEE);
+    expect(small).toBeGreaterThan(0.2);
+    expect(large).toBeGreaterThan(2.5 * small);
+    expect(flareStrength(1000, KNEE)).toBeLessThanOrEqual(1);
+    expect(flareStrength(0, KNEE)).toBe(0);
+  });
+
+  it('dies down within a fraction of a second', () => {
+    const values = trace([0], 5, 1);
+    for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1]);
+    expect(values[Math.round(0.6 / STEP)]).toBeLessThan(0.1 * values[0]);
+  });
+
+  it('holds a steady strong burn through a stream of sparks', () => {
+    // Twenty sparks, one every other frame; past the first quarter second.
+    const times = Array.from({ length: 20 }, (_, i) => i * 2 * STEP);
+    const values = trace(times, 1, 1).slice(16, 38);
+    expect(Math.min(...values)).toBeGreaterThan(0.8);
+    expect(Math.max(...values) - Math.min(...values)).toBeLessThan(0.1);
+  });
+
+  it('does not grow when the clock jumps back', () => {
+    expect(drainFlare(2, -5, FADE)).toBe(2);
   });
 });

@@ -23,6 +23,11 @@ export const NIGHT = {
   cold: [0.5, 0.72, 1.0] as [number, number, number],
   /** How much pale things keep glowing in the dark, so enemies stay readable. */
   glow: 0.55,
+  /**
+   * Share of their own hue that strongly coloured things keep in that glow
+   * (0..1), instead of the cold; pale and dull things are untouched.
+   */
+  glowHue: 0.85,
 
   /**
    * The skull lantern on the staff: fire in its eye socket throws a soft
@@ -98,6 +103,28 @@ export const NIGHT = {
      * it is untouched. The skull is seen to be lit by the fire inside it.
      */
     shade: 0.6,
+    /**
+     * The fire flares when the skull drinks in a spark. Each spark adds its
+     * worth to a store of heat that drains away exponentially; the flare's
+     * strength (0..1) is that heat run through a saturating curve, so a
+     * single spark flashes, a larger one harder, and a stream of them holds
+     * a steady strong burn instead of strobing.
+     */
+    flare: {
+      /** Seconds for the stored heat to drain to about a third. */
+      fade: 0.18,
+      /**
+       * Stored heat, in spark worth, at which the flare reaches about two
+       * thirds of its full strength; it nears full strength past three times
+       * this. At 2.5, a spark worth 1 flares to a third, one worth 5 to
+       * six sevenths, and a spark every other frame holds it near nine tenths.
+       */
+      knee: 2.5,
+      /** What full flare adds to the fire's strength, as a share of its rest strength. */
+      intensity: 1.6,
+      /** What full flare adds to the halo's radius, as a share of its rest radius. */
+      halo: 0.9,
+    },
   },
 
   fog: {
@@ -112,6 +139,63 @@ export const NIGHT = {
     softness: 0.11,
     /** Wind carrying the fog over the plane, world units per second. */
     drift: [7, -3] as [number, number],
+  },
+
+  /**
+   * The sparks' coals drive the fog away round them and lay a faint light
+   * on the ground. Each lying spark adds a soft round heat of its grade to
+   * a heat map (see FireHeat); heats add up where they overlap, so a field
+   * of coals clears more than one, up to `cap`. Per-grade lists are
+   * indexed by grade (CFG.spark.grades).
+   */
+  fire: {
+    /** Radius of a fire's heat on the ground, per grade, in world units. */
+    radius: [60, 85, 120, 170] as number[],
+    /** A fire's heat at its centre, per grade (0..1): the share of the fog it clears there on its own. */
+    heat: [0.8, 0.9, 1, 1] as number[],
+    /** Most of the fog that any number of fires together clear (0..1). */
+    cap: 1,
+    /**
+     * Light the fires lay on the ground at full heat, as a share of full
+     * light (0..1); 0 leaves the fires lighting nothing. It adds to the
+     * hero's light and the beam like they add to each other.
+     */
+    light: 0.1,
+    /** Colour multiplier where that light falls: a neutral warm... */
+    color: [1.05, 0.96, 0.84] as [number, number, number],
+    /** ...taken this share (0..1) of the way to the colour of the grades whose heat it is (GRADE_COLORS). */
+    tint: 0.3,
+    /**
+     * The light each coal gives itself: a soft upright blob round the coal
+     * and the tiny sparks rising from it, within which whatever is bright
+     * keeps its own colour, as a light should, where the night would turn
+     * a pale coal as cold and blue as the navii; the dark soil there is
+     * left alone. It is at full strength over the inner half of its radii,
+     * fades to nothing at the rim and goes with the coal when the spark is
+     * drawn in.
+     */
+    aura: {
+      /** Radius of the blob across, in world units. */
+      radius: 9,
+      /** How much taller than wide the blob is, to hold the sparks rising from the coal. */
+      stretch: 2.2,
+      /** Height of its centre above the coal's ground point, in world units. */
+      rise: 10,
+      /** Brightness at full strength, as a share of full light (0..1). */
+      light: 1,
+      /**
+       * Brightest channel of a pixel (0..1) from which it starts to keep its
+       * colour, and from which it keeps all of it: above the brightest soil,
+       * below the coals' halos.
+       */
+      from: 0.32,
+      to: 0.6,
+    },
+    /** Seconds a new spark's heat takes to grow in, and a gathered one's to die away. */
+    fadeIn: 0.35,
+    fadeOut: 0.6,
+    /** World units per texel of the heat map; the heat is smooth, so it can be coarse. */
+    cell: 4,
   },
 
   grain: {

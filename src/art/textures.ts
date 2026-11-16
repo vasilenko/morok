@@ -9,12 +9,14 @@ import upyrAtlas from './sprites/upyr.json';
 import upyrUrl from './sprites/upyr.png';
 import volhvSheet from './sprites/volhv-walk.json';
 import volhvUrl from './sprites/volhv-walk.png';
+import { COAL, coalLight, GRADE_COLORS, WING, wingCover } from './coals';
 import { ART_SCALE, GROUND_ART_SCALE } from './scale';
 
 /**
  * Game art. Characters, props and the ground tile are generated from
- * art/source/ by `npm run sprites`; the shadow and the particle dot are
- * drawn with the 2D canvas API at boot and registered as Phaser textures.
+ * art/source/ by `npm run sprites`; the shadow, the particle dot and the
+ * sparks' coals are drawn with the 2D canvas API at boot and registered
+ * as Phaser textures.
  */
 
 export { ART_SCALE, GROUND_ART_SCALE };
@@ -29,6 +31,7 @@ export const TEX = {
   stake: 'stake',
   shadow: 'shadow',
   dot: 'dot',
+  coal: 'coal',
   ground: 'ground',
   scenery: 'scenery',
 } as const;
@@ -128,6 +131,59 @@ function createDot(textures: Phaser.Textures.TextureManager): void {
   textures.addCanvas(TEX.dot, canvas);
 }
 
+/** The frame of the coals' texture that holds the wing. */
+export const WING_FRAME = 'wing';
+
+/** The frame of the coals' texture that holds a coal of `grade`, on the ground or off it. */
+export function coalFrame(grade: number, grounded: boolean): number {
+  return grounded ? grade : GRADE_COLORS.length + grade;
+}
+
+/**
+ * Every grade's coal in one texture, on the ground and off it (see
+ * coalFrame), with the wing beside them, so all the sparks draw in one
+ * batch. Both are worked out per pixel: the coal's light is stored as the
+ * colour and opacity that, laid over black, give that light; the wing is
+ * white, of its cover's opacity. Each frame's origin is the coal's heart
+ * or the wing's root.
+ */
+function createCoals(textures: Phaser.Textures.TextureManager): void {
+  const [coal, wing] = [COAL.frame, WING.frame];
+  const [coalW, coalH] = [coal.width * ART_SCALE, coal.height * ART_SCALE];
+  const [wingW, wingH] = [wing.width * ART_SCALE, wing.height * ART_SCALE];
+  const grades = GRADE_COLORS.length;
+  const coals = 2 * grades;
+  const { canvas, g } = makeCanvas(coal.width * coals + wing.width, Math.max(coal.height, wing.height), ART_SCALE);
+  const image = g.createImageData(canvas.width, canvas.height);
+  const put = (i: number, j: number, rgb: readonly number[], alpha: number) => {
+    const at = (j * canvas.width + i) * 4;
+    for (let c = 0; c < 3; c++) image.data[at + c] = Math.round(255 * rgb[c]);
+    image.data[at + 3] = Math.round(255 * alpha);
+  };
+  const at = (pixel: number) => (pixel + 0.5) / ART_SCALE;
+  const frames: number[] = [];
+  for (const grounded of [true, false]) {
+    GRADE_COLORS.forEach((color, grade) => {
+      const frame = coalFrame(grade, grounded);
+      frames.push(frame);
+      for (let j = 0; j < coalH; j++) {
+        for (let i = 0; i < coalW; i++) {
+          const light = coalLight(coal.left + at(i), coal.top + at(j), color, grounded);
+          const alpha = Math.min(1, Math.max(...light));
+          put(frame * coalW + i, j, alpha > 0 ? light.map((c) => Math.min(1, c / alpha)) : light, alpha);
+        }
+      }
+    });
+  }
+  for (let j = 0; j < wingH; j++) {
+    for (let i = 0; i < wingW; i++) put(coals * coalW + i, j, [1, 1, 1], wingCover(wing.left + at(i), wing.top + at(j)));
+  }
+  g.putImageData(image, 0, 0);
+  const texture = textures.addCanvas(TEX.coal, canvas)!;
+  for (const frame of frames) texture.add(frame, 0, frame * coalW, 0, coalW, coalH);
+  texture.add(WING_FRAME, 0, coals * coalW, 0, wingW, wingH);
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -178,4 +234,5 @@ export function createAnimations(anims: Phaser.Animations.AnimationManager): voi
 export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createShadow(textures);
   createDot(textures);
+  createCoals(textures);
 }

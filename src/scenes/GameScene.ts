@@ -6,6 +6,9 @@ import { Horde } from '../entities/Horde';
 import { NAVIA } from '../entities/navia';
 import { UPYR } from '../entities/upyr';
 import { Player } from '../entities/Player';
+import { Sparks } from '../entities/Sparks';
+import { dropWorth } from '../entities/spark';
+import type { Enemy } from '../entities/enemy';
 import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
 import { addNight, type NightFilter } from '../night/NightFilter';
@@ -45,6 +48,7 @@ export class GameScene extends Phaser.Scene {
   private mode: Mode = 'title';
   private player!: Player;
   private horde!: Horde;
+  private sparks!: Sparks;
   private ground!: Ground;
   private scenery!: Scenery;
   private fx!: Fx;
@@ -60,6 +64,8 @@ export class GameScene extends Phaser.Scene {
   /** Seconds the scene has been animating, including the title screen. */
   private clock = 0;
   private kills = 0;
+  /** Experience gathered in this run: the worth of every spark the skull has drunk in. */
+  private xp = 0;
 
   constructor() {
     super('Game');
@@ -67,23 +73,27 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     // Draw order, bottom to top: the soil, puddles on it, shadows, then
-    // everything standing. Entities are depth-sorted by the y where they
-    // meet the ground.
+    // everything standing and the sparks on the ground, the light the sparks
+    // shed, and what flies over it all. Entities are depth-sorted by the y
+    // where they meet the ground.
     const tiles = this.add.layer();
     const puddles = this.add.layer();
     const shadows = this.add.layer();
     const entities = this.add.layer();
+    const lights = this.add.layer();
     const overhead = this.add.layer();
 
     this.elapsed = 0;
     this.clock = 0;
     this.kills = 0;
+    this.xp = 0;
 
     this.ground = new Ground(this, tiles);
     // A new layout of the scenery for every run.
     this.scenery = new Scenery(this, puddles, entities, randomScenerySeed());
     this.player = new Player(this, { shadows, entities, overhead });
     this.horde = new Horde(this, entities, shadows);
+    this.sparks = new Sparks(this, entities, lights);
     this.fx = new Fx(this, overhead);
     this.stake = new AspenStake(this, overhead, this.horde, this.fx);
     this.director = new WaveDirector(CFG.spawn);
@@ -126,7 +136,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Snapshot for the HUD and for debugging. */
-  get stats(): RunStats & { mode: Mode; wave: number; enemies: number } {
+  get stats(): RunStats & { mode: Mode; wave: number; enemies: number; xp: number; sparks: number } {
     return {
       mode: this.mode,
       elapsed: this.elapsed,
@@ -135,6 +145,8 @@ export class GameScene extends Phaser.Scene {
       hp: this.player.hp,
       maxHp: CFG.player.hp,
       enemies: this.horde.size,
+      xp: this.xp,
+      sparks: this.sparks.size,
     };
   }
 
@@ -154,11 +166,24 @@ export class GameScene extends Phaser.Scene {
 
     const contact = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7, this.strike);
     this.kills += this.stake.update(dt, player);
-    this.horde.removeDead();
+    this.horde.removeDead(this.dropSpark);
+    const drunk = this.sparks.update(dt, this.clock, player, player.skullEye);
+    if (drunk > 0) {
+      this.xp += drunk;
+      this.night.feed(drunk);
+    }
 
     if (contact > 0 && player.hurt(contact)) this.onPlayerHurt();
     ui.update(this.stats);
   }
+
+  /** A slain enemy leaves a spark where it fell. */
+  private readonly dropSpark = (enemy: Enemy): void => {
+    const height = enemy.kind.groundY;
+    const cfg = CFG.spark;
+    const worth = dropWorth(cfg.randomGrade, enemy.kind.xp(), Math.random(), cfg.grades);
+    this.sparks.drop(enemy.x, enemy.y + height, height, worth);
+  };
 
   /** An enemy's attack reaches the hero. Returns whether it landed. */
   private readonly strike = (damage: number): boolean => {
@@ -238,6 +263,8 @@ export class GameScene extends Phaser.Scene {
     const top = this.player.y - height / 2 - margin;
     this.ground.cover(left, top, width + margin * 2, height + margin * 2);
     this.scenery.cover(left, top, width + margin * 2, height + margin * 2);
+    // The fires' heat over the view, for the night to thin its fog by.
+    this.night.fires.draw(this.player.x, this.player.y, width, height, (stamp) => this.sparks.fires(stamp));
     if (import.meta.env.DEV) {
       this.footprintDebug?.draw(
         () => this.scenery.footprints(left, top, width + margin * 2, height + margin * 2),

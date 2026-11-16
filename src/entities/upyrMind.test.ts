@@ -17,6 +17,7 @@ const cfg: UpyrConfig = {
   cooldown: 2.5,
   appearsAt: 45,
   share: 1 / 8,
+  xp: 5,
 };
 
 const STEP = 1 / 60;

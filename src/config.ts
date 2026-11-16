@@ -20,6 +20,8 @@ export const CFG = {
     hp: 10,
     radius: 11,
     damage: 12,
+    /** Worth of the spark she leaves when laid to rest. */
+    xp: 1,
   },
 
   /**
@@ -53,6 +55,8 @@ export const CFG = {
     appearsAt: 45,
     /** From then on, the chance that a spawned enemy is an upyr. */
     share: 1 / 8,
+    /** Worth of the spark it leaves when laid to rest. */
+    xp: 5,
   },
 
   stake: {
@@ -83,7 +87,71 @@ export const CFG = {
     ringEvery: 4,
     maxEnemies: 700,
   },
+
+  /**
+   * The spark a creature leaves when it is laid to rest: experience that the
+   * skull on the hero's staff drinks in. It pops out of the corpse, lies
+   * where it settles until the hero comes near, then is drawn into the
+   * skull's eye socket. Sparks never fade.
+   */
+  spark: {
+    /**
+     * Most sparks lying on the plane at once. Dropping one more pours the
+     * oldest lying spark's worth into the new one, so no worth is lost.
+     */
+    cap: 600,
+    /**
+     * The grades of fire a spark burns with, by the experience it holds: a
+     * spark is of the highest grade whose threshold its worth reaches (and
+     * of the lowest if it reaches none). The look depends on the grade
+     * alone, never on who left the spark, so a merged spark climbs the
+     * grades as its worth grows.
+     */
+    grades: [1, 5, 15, 40],
+    /**
+     * Temporary, so that every grade can be seen in play before there are
+     * enemies strong enough to leave the higher ones: while on, a slain
+     * enemy's spark ignores its kind's `xp` and is worth the threshold of a
+     * grade picked uniformly at random. Off restores the real rule.
+     */
+    randomGrade: true,
+    /** The hero draws in sparks within this distance of his position. */
+    pickupRadius: 60,
+    /** Seconds after the drop before a spark can be drawn in, so every drop is seen. */
+    pickupDelay: 0.25,
+    /** How far along the ground a spark pops out of the corpse. */
+    popDistance: 14,
+    /** Height of the hop on its way down from the corpse's body to the ground. */
+    popHeight: 8,
+    /** Seconds the pop takes before the spark lies still. */
+    settle: 0.35,
+    /** Height above the ground of a lying spark's heart: the middle of its coal, the point that flies into the skull. */
+    hover: 4,
+    /**
+     * The flight into the skull, like a moth's to a lantern: it speeds up
+     * from `startSpeed` by `acceleration` per second up to `maxSpeed`,
+     * each in proportion to how far from the eye it starts, against
+     * `pickupRadius`, so every flight takes about as long. It is aimed at
+     * the eye but turned aside by up to `curve` degrees, a turn
+     * that eases off as it closes in, and wavers by up to `waver` degrees
+     * either way `waverRate` times a second. The eye carries it along as
+     * the hero moves, so the flight takes as long when he runs away as
+     * when he stands; as long as `curve` plus `waver` is well short of 90,
+     * every step brings it closer and it always arrives.
+     */
+    pull: {
+      startSpeed: 15,
+      acceleration: 200,
+      maxSpeed: 600,
+      curve: 40,
+      waver: 18,
+      waverRate: 2.5,
+      /** It is drunk in once this close to the eye. */
+      arrive: 2,
+    },
+  },
 };
 
 export type SpawnConfig = typeof CFG.spawn;
 export type UpyrConfig = typeof CFG.upyr;
+export type SparkConfig = typeof CFG.spark;

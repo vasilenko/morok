@@ -27,6 +27,7 @@ export const UPYR: EnemyKind<UpyrMind> = {
   // It stands on the ground, so its shadow is as dark as the hero's.
   shadowWidth: 30,
   shadowAlpha: 0.45,
+  groundY: FEET_Y,
 
   create() {
     const cfg = CFG.upyr;
@@ -41,6 +42,8 @@ export const UPYR: EnemyKind<UpyrMind> = {
 
   // Mid-lunge it passes through the hero; its strike is dealt in steer.
   contactDamage: (upyr) => (upyr.state.state === 'lunge' ? 0 : CFG.upyr.damage),
+
+  xp: () => CFG.upyr.xp,
 
   dress(sprite) {
     sprite.clearTint().setRotation(0).play(ANIM.upyrProwl);

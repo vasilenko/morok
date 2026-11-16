@@ -56,6 +56,10 @@ export interface EnemyKind<S = unknown> {
   /** Width of its ground shadow in world units, and the shadow's opacity. */
   readonly shadowWidth: number;
   readonly shadowAlpha: number;
+  /** How far below its position the ground is: where it stands or its shadow falls, and where its spark drops. */
+  readonly groundY: number;
+  /** Worth of the spark it leaves when laid to rest. */
+  xp(): number;
   /** Stats and fresh state for a new enemy; `elapsed` is the time survived so far. */
   create(elapsed: number): Newborn<S>;
   /**
