@@ -2,21 +2,17 @@
 export const STRINGS = {
   title: 'MOROK',
   tagline: 'The night has only begun. The navii are already walking out of the fog.',
-  controls: 'WASD or arrows to move · the aspen stake strikes on its own · Esc to pause',
   start: 'Enter — step into the night',
 
   paused: 'Paused',
   resume: 'Esc — resume',
 
   death: 'Nav has claimed you',
-  deathStats: (time: string, wave: number, kills: number) => `You lasted ${time} · wave ${wave} · ${kills} laid to rest`,
+  deathStats: (time: string, kills: number) => `You lasted ${time} · ${kills} laid to rest`,
   newRecord: 'Your longest night yet',
   bestTime: (time: string) => `Longest night: ${time}`,
   restart: 'Enter — try again',
 
   hp: 'Life',
-  kills: 'navii laid to rest',
-  dusk: 'Dusk',
-  wave: (n: number) => `Wave ${n}`,
-  ringWave: 'Ring of navii',
+  kills: 'laid to rest',
 };

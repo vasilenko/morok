@@ -5,7 +5,6 @@ export interface RunStats {
   /** Seconds survived. */
   elapsed: number;
   kills: number;
-  wave: number;
   hp: number;
   maxHp: number;
 }
@@ -20,8 +19,8 @@ export function formatTime(seconds: number): string {
 }
 
 /**
- * The DOM layer over the canvas: the in-run HUD, the wave banner and the
- * title, pause and death screens.
+ * The DOM layer over the canvas: the in-run HUD and the title, pause and
+ * death screens.
  */
 class Ui {
   /** The player clicked a full-screen overlay. */
@@ -30,11 +29,9 @@ class Ui {
   private readonly hud = byId('hud');
   private readonly hpFill = byId('hpFill');
   private readonly timer = byId('timer');
-  private readonly waveLabel = byId('waveLabel');
   private readonly kills = byId('kills');
-  private readonly bannerEl = byId('banner');
   private readonly screen = byId('screen');
-  private shown: Partial<Record<'timer' | 'kills' | 'hp' | 'wave', string | number>> = {};
+  private shown: Partial<Record<'timer' | 'kills' | 'hp', string | number>> = {};
 
   constructor() {
     byId('hpLabel').textContent = STRINGS.hp;
@@ -47,7 +44,6 @@ class Ui {
     this.setScreen([
       ['h1', '', STRINGS.title],
       ['p', '', STRINGS.tagline],
-      ['p', 'dim', STRINGS.controls],
       ['div', 'cta', STRINGS.start],
     ]);
   }
@@ -62,7 +58,7 @@ class Ui {
   showDeath(stats: RunStats, bestTime: number, isRecord: boolean): void {
     this.setScreen([
       ['h1', 'small', STRINGS.death],
-      ['p', '', STRINGS.deathStats(formatTime(stats.elapsed), stats.wave, stats.kills)],
+      ['p', '', STRINGS.deathStats(formatTime(stats.elapsed), stats.kills)],
       ['p', 'dim', isRecord ? STRINGS.newRecord : STRINGS.bestTime(formatTime(bestTime))],
       ['div', 'cta', STRINGS.restart],
     ]);
@@ -87,18 +83,6 @@ class Ui {
       this.shown.hp = stats.hp;
       this.hpFill.style.transform = `scaleX(${stats.hp / stats.maxHp})`;
     }
-    if (stats.wave !== this.shown.wave) {
-      this.shown.wave = stats.wave;
-      this.waveLabel.textContent = stats.wave === 0 ? STRINGS.dusk : STRINGS.wave(stats.wave);
-    }
-  }
-
-  /** Announces a wave in large letters that fade on their own. */
-  banner(text: string): void {
-    this.bannerEl.textContent = text;
-    this.bannerEl.classList.remove('show');
-    void this.bannerEl.offsetWidth; // restart the CSS animation
-    this.bannerEl.classList.add('show');
   }
 
   private setScreen(lines: Array<[tag: string, className: string, text: string]>): void {

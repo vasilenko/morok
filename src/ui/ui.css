@@ -79,10 +79,6 @@ body {
   letter-spacing: 0.04em;
 }
 
-#waveLabel {
-  margin-top: 6px;
-}
-
 .kills {
   text-align: right;
 }
@@ -92,47 +88,6 @@ body {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--navi);
-}
-
-/* ── Wave announcement ──────────────────────────────────────────────────── */
-
-#banner {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 24vh;
-  text-align: center;
-  font-size: clamp(28px, 5vw, 54px);
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
-  text-transform: uppercase;
-  color: var(--bone);
-  text-shadow:
-    0 0 24px #000,
-    0 2px 0 #000;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#banner.show {
-  animation: banner 2.2s ease-out;
-}
-
-@keyframes banner {
-  0% {
-    opacity: 0;
-    letter-spacing: 0.6em;
-  }
-  15% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    letter-spacing: 0.3em;
-  }
 }
 
 /* ── Title, pause and death screens ─────────────────────────────────────── */
@@ -201,8 +156,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen .cta,
-  #banner.show {
+  .screen .cta {
     animation-duration: 0.01s;
   }
 }

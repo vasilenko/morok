@@ -8,7 +8,6 @@ import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
 import { addNight, type NightFilter } from '../night/NightFilter';
 import { WaveDirector } from '../systems/WaveDirector';
-import { STRINGS } from '../ui/strings';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
 import { Ground } from '../world/Ground';
@@ -125,7 +124,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Snapshot for the HUD and for debugging. */
-  get stats(): RunStats & { mode: Mode; enemies: number } {
+  get stats(): RunStats & { mode: Mode; wave: number; enemies: number } {
     return {
       mode: this.mode,
       elapsed: this.elapsed,
@@ -145,11 +144,10 @@ export class GameScene extends Phaser.Scene {
     player.placeFeet(feet.x, feet.y);
 
     const spawnRadius = this.spawnRadius;
-    const wave = this.director.update(dt, this.elapsed, (angle, extraDistance) => {
+    this.director.update(dt, this.elapsed, (angle, extraDistance) => {
       const distance = spawnRadius + extraDistance;
       this.horde.spawn(player.x + Math.cos(angle) * distance, player.y + Math.sin(angle) * distance, this.elapsed);
     });
-    if (wave) ui.banner(wave.ring ? STRINGS.ringWave : STRINGS.wave(wave.wave));
 
     const touched = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7);
     this.kills += this.stake.update(dt, player);
