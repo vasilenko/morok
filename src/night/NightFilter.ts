@@ -3,6 +3,7 @@ import { GRADE_COLORS } from '../art/coals';
 import { DPR } from '../display';
 import { beamTarget, easeAngle } from './beam';
 import { NIGHT } from './config';
+import { CoalMask } from './CoalMask';
 import { FireHeat } from './FireHeat';
 import { drainFlare, eyeFire, flameWaver, flareStrength } from './flame';
 import fragmentSource from './night.frag?raw';
@@ -33,12 +34,15 @@ export class NightFilter extends Phaser.Filters.Controller {
   private heat = 0;
   private heatAt = 0;
 
-  /** The heat of the sparks' fires, which thins the fog and lights the ground, and their coals' auras. */
+  /** The heat of the sparks' fires, which thins the fog and lights the ground. */
   readonly fires: FireHeat;
+  /** The coals' own light as seen, which keeps them in their colour in the dark. */
+  readonly coals: CoalMask;
 
   constructor(camera: Phaser.Cameras.Scene2D.Camera) {
     super(camera, NODE);
     this.fires = new FireHeat(camera.scene);
+    this.coals = new CoalMask(camera.scene);
   }
 
   /**
@@ -94,8 +98,11 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
   }
 
   setupTextures(controller: Phaser.Filters.Controller, textures: Phaser.Renderer.WebGL.Wrappers.WebGLTextureWrapper[]): void {
-    const heat = (controller as NightFilter).fires.glTexture;
+    const night = controller as NightFilter;
+    const heat = night.fires.glTexture;
     if (heat) textures[1] = heat;
+    const coals = night.coals.glTexture;
+    if (coals) textures[2] = coals;
   }
 
   setupUniforms(controller: Phaser.Filters.Controller, drawingContext: Phaser.Renderer.WebGL.DrawingContext): void {
@@ -173,8 +180,16 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
     set('uFireColor', NIGHT.fire.color);
     set('uFireTint', NIGHT.fire.tint);
     GRADE_COLORS.forEach((color, grade) => set(`uGradeColor${grade}`, [...color]));
+    // The coals' mask is drawn without the camera's shake, so its corner is
+    // placed where the shaken view puts that point of the world.
+    const coals = night.coals;
+    const corner = view.transformPoint(coals.x, coals.y);
+    set('uCoals', 2);
+    set('uCoalOrigin', [corner.x, corner.y]);
+    set('uCoalSize', [coals.width, coals.height]);
     const aura = NIGHT.fire.aura;
     set('uAuraLight', aura.light);
+    set('uAuraFull', aura.full);
     set('uAuraFrom', aura.from);
     set('uAuraTo', aura.to);
 

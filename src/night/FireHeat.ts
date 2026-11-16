@@ -16,8 +16,6 @@ export interface FireStamp {
    * `strength` (0..1) of that grade's heat.
    */
   heat(x: number, y: number, grade: number, strength: number): void;
-  /** The light a coal gives itself, at `strength` (0..1), for a coal over the ground point (x, y). */
-  aura(x: number, y: number, strength: number): void;
 }
 
 /**
@@ -27,21 +25,17 @@ export interface FireStamp {
  * the fog by it and lays a faint light with it, so a lone small fire makes
  * a small hole while a field of them opens a clearing.
  *
- * A second, small blob per coal is its aura (NIGHT.fire.aura): the light
- * the coal gives itself, round it rather than on the ground, so it keeps
- * its colour in the dark beyond the hero's light.
- *
  * Stamping costs one quad per fire into a texture of a few hundred texels
  * a side, all in one batch, however many fires there are; a uniform array
  * would cap the number of fires the filter can see.
  *
  * The map is laid on the world grid, `NIGHT.fire.cell` world units per
  * texel, with its corner snapped to the grid, so it does not swim as the
- * camera moves. It holds the heat itself in the red channel, the auras in
- * the green, and in the blue the heat weighted by its grade's place from
- * the lowest (0) to the highest (1), so that blue over red is the mean
- * grade of the heat there, which tints its light; the 8-bit texture clips
- * each at 1, above any useful cap.
+ * camera moves. It holds the heat itself in the red channel, and in the
+ * blue the heat weighted by its grade's place from the lowest (0) to the
+ * highest (1), so that blue over red is the mean grade of the heat there,
+ * which tints its light; the 8-bit texture clips each at 1, above any
+ * useful cap.
  */
 export class FireHeat {
   /** World position of the map's top-left corner, and its size in world units. */
@@ -72,7 +66,7 @@ export class FireHeat {
   /**
    * Redraws the map over the view centred on (centreX, centreY), `viewWidth`
    * by `viewHeight` world units. `fires` is called with the stamps that
-   * lay one fire's heat and its coal's aura.
+   * lay one fire's heat.
    */
   draw(
     centreX: number,
@@ -82,10 +76,9 @@ export class FireHeat {
     fires: (stamp: FireStamp) => void,
   ): void {
     const fire = NIGHT.fire;
-    const aura = fire.aura;
     const cell = fire.cell;
     // Room round the view for the camera's shake and the blobs that reach in.
-    const margin = Math.max(...fire.radius, aura.radius * aura.stretch + aura.rise) + 16;
+    const margin = Math.max(...fire.radius) + 16;
     this.x = Math.floor((centreX - viewWidth / 2 - margin) / cell) * cell;
     this.y = Math.floor((centreY - viewHeight / 2 - margin) / cell) * cell;
     const columns = Math.ceil((viewWidth + 2 * margin) / cell) + 1;
@@ -123,13 +116,6 @@ export class FireHeat {
         if (heat > 0) {
           const tint = Phaser.Display.Color.GetColor(level(heat), 0, level((heat * grade) / highest));
           blob(x, y, fire.radius[grade], NIGHT.lightSquash, tint);
-        }
-      },
-      aura: (x, y, strength) => {
-        // The aura stands round the coal, centred `rise` above its ground point.
-        if (strength > 0) {
-          const tint = Phaser.Display.Color.GetColor(0, level(strength), 0);
-          blob(x, y - aura.rise, aura.radius, 1 / aura.stretch, tint);
         }
       },
     });

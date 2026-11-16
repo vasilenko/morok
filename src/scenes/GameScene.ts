@@ -54,6 +54,8 @@ export class GameScene extends Phaser.Scene {
   private fx!: Fx;
   private stake!: AspenStake;
   private director!: WaveDirector;
+  /** The layers that can stand in front of a coal or light it, for the night's mask of the coals. */
+  private layers!: Record<'entities' | 'lights' | 'overhead', Phaser.GameObjects.Layer>;
   /** Public for tuning from the console in dev builds. */
   night!: NightFilter;
   /** Dev builds only: outlines of the footprints. Declared, so production builds get no field. */
@@ -73,15 +75,16 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     // Draw order, bottom to top: the soil, puddles on it, shadows, then
-    // everything standing and the sparks on the ground, the light the sparks
-    // shed, and what flies over it all. Entities are depth-sorted by the y
-    // where they meet the ground.
+    // everything standing and the sparks on the ground with the tiny sparks
+    // they shed, the trails of the sparks in flight, and what flies over it
+    // all. Entities are depth-sorted by the y where they meet the ground.
     const tiles = this.add.layer();
     const puddles = this.add.layer();
     const shadows = this.add.layer();
     const entities = this.add.layer();
     const lights = this.add.layer();
     const overhead = this.add.layer();
+    this.layers = { entities, lights, overhead };
 
     this.elapsed = 0;
     this.clock = 0;
@@ -263,8 +266,11 @@ export class GameScene extends Phaser.Scene {
     const top = this.player.y - height / 2 - margin;
     this.ground.cover(left, top, width + margin * 2, height + margin * 2);
     this.scenery.cover(left, top, width + margin * 2, height + margin * 2);
-    // The fires' heat over the view, for the night to thin its fog by.
+    // The fires' heat over the view, for the night to thin its fog by, and
+    // the coals' light as seen, for it to keep in their colour.
     this.night.fires.draw(this.player.x, this.player.y, width, height, (stamp) => this.sparks.fires(stamp));
+    const { entities, lights, overhead } = this.layers;
+    this.night.coals.draw(camera, entities, this.sparks.glows, lights, overhead);
     if (import.meta.env.DEV) {
       this.footprintDebug?.draw(
         () => this.scenery.footprints(left, top, width + margin * 2, height + margin * 2),

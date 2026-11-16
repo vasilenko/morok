@@ -29,6 +29,24 @@ export function colorHex(color: Rgb, share = 0, scale = 1): number {
 }
 
 /**
+ * The colour `t` (0..1) of the way along `stops`, hex colours spread evenly
+ * from 0 to 1: mixed channel by channel between the two stops either side
+ * of it, the way Phaser's particles fade through a list of colours.
+ */
+export function colorAlong(stops: readonly number[], t: number): number {
+  const last = stops.length - 1;
+  const at = Math.min(1, Math.max(0, t)) * last;
+  const i = Math.min(Math.floor(at), Math.max(0, last - 1));
+  const [from, to] = [stops[i], stops[Math.min(i + 1, last)]];
+  const share = at - i;
+  const channel = (shift: number) => {
+    const [a, b] = [(from >> shift) & 0xff, (to >> shift) & 0xff];
+    return Math.round(a + (b - a) * share) << shift;
+  };
+  return channel(16) | channel(8) | channel(0);
+}
+
+/**
  * The coal's shape, in world units: a hot pale core in a halo of its
  * colour, with a faint smudge of that light on the soil below it, which
  * lies CFG.spark.hover below its heart. The core is its colour taken

@@ -31,6 +31,7 @@ export const TEX = {
   stake: 'stake',
   shadow: 'shadow',
   dot: 'dot',
+  speck: 'speck',
   coal: 'coal',
   ground: 'ground',
   scenery: 'scenery',
@@ -124,11 +125,40 @@ function createShadow(textures: Phaser.Textures.TextureManager): void {
 }
 
 /** White disc used for particles; 32px across. */
-function createDot(textures: Phaser.Textures.TextureManager): void {
+function createDot(textures: Phaser.Textures.TextureManager): HTMLCanvasElement {
   const { canvas, g } = makeCanvas(32, 32, 1);
   g.fillStyle = '#ffffff';
   disc(g, 16, 16, 15);
   textures.addCanvas(TEX.dot, canvas);
+  return canvas;
+}
+
+/**
+ * The dot as light, for sprites that must add their light to what is under
+ * them like the ADD blend does, yet sort among the entities in their normal
+ * blend, where another blend mode would break the batch at every one.
+ *
+ * Its colour is the dot's light and its alpha a token 1/255 throughout.
+ * Phaser's sprite shader divides a texel's colour by its alpha and
+ * multiplies it back by the alpha it draws with, so such a texel comes out
+ * as the dot's light, scaled by the sprite's tint and alpha, over a
+ * background left all but untouched: the same as the dot added. It is
+ * uploaded as raw data, since a canvas would premultiply that colour away.
+ */
+function createSpeck(textures: Phaser.Textures.TextureManager, dot: HTMLCanvasElement): void {
+  const { width, height } = dot;
+  const pixels = dot.getContext('2d')!.getImageData(0, 0, width, height).data;
+  const data = new Uint8Array(pixels.length);
+  for (let at = 0; at < data.length; at += 4) {
+    const alpha = pixels[at + 3] / 255;
+    for (let c = 0; c < 3; c++) data[at + c] = Math.round(pixels[at + c] * alpha);
+    data[at + 3] = 1;
+  }
+  const renderer = textures.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+  const glTexture = renderer.createUint8ArrayTexture(data, width, height, false);
+  // Smooth like the canvas textures, where raw data defaults to blocky.
+  renderer.setTextureFilter(glTexture, Phaser.Textures.FilterMode.LINEAR);
+  textures.addGLTexture(TEX.speck, glTexture);
 }
 
 /** The frame of the coals' texture that holds the wing. */
@@ -233,6 +263,6 @@ export function createAnimations(anims: Phaser.Animations.AnimationManager): voi
 
 export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createShadow(textures);
-  createDot(textures);
+  createSpeck(textures, createDot(textures));
   createCoals(textures);
 }

@@ -58,16 +58,21 @@ uniform float uFogCoverage;
 uniform float uFogSoftness;
 
 // The heat of the sparks' fires (FireHeat): a map laid on the world, its
-// red channel the summed heat, its green the coals' auras. uHeatOrigin is
-// the world offset of the framebuffer's top-left corner from the map's,
-// uHeatSize the map's size, both in world units. The heat thins the fog,
+// red channel the summed heat. uHeatOrigin is the world offset of the
+// framebuffer's top-left corner from the map's, uHeatSize the map's size,
+// both in world units. The heat thins the fog,
 // up to uHeatCap, and throws uFireLight of light tinted uFireColor, taken
 // uFireTint of the way to the colour of the grades whose heat it is: its
 // blue channel over its red is their mean grade, 0 for the lowest and 1
-// for the highest of the four, uGradeColor0 to uGradeColor3;
-// within an aura, what is bright is lit by up to uAuraLight of untinted
-// light, so it keeps its own colour; a pixel's brightest channel decides
-// how bright, between uAuraFrom and uAuraTo.
+// for the highest of the four, uGradeColor0 to uGradeColor3.
+//
+// The coals' own light as seen (CoalMask): a texture of uCoalSize pixels
+// whose top-left corner lies at uCoalOrigin on the framebuffer, holding
+// the light of the coals and their sparks where nothing stands in front of
+// them, black elsewhere. Where it holds uAuraFull or more, what is bright
+// is lit by up to uAuraLight of untinted light, so it keeps its own
+// colour; a pixel's brightest channel decides how bright, between
+// uAuraFrom and uAuraTo.
 uniform sampler2D uHeat;
 uniform vec2 uHeatOrigin;
 uniform vec2 uHeatSize;
@@ -79,7 +84,11 @@ uniform vec3 uGradeColor0;
 uniform vec3 uGradeColor1;
 uniform vec3 uGradeColor2;
 uniform vec3 uGradeColor3;
+uniform sampler2D uCoals;
+uniform vec2 uCoalOrigin;
+uniform vec2 uCoalSize;
 uniform float uAuraLight;
+uniform float uAuraFull;
 uniform float uAuraFrom;
 uniform float uAuraTo;
 
@@ -202,10 +211,13 @@ void main ()
     gradeColor = mix(gradeColor, uGradeColor2, clamp(grade - 1.0, 0.0, 1.0));
     gradeColor = mix(gradeColor, uGradeColor3, clamp(grade - 2.0, 0.0, 1.0));
     vec3 fireColor = mix(uFireColor, gradeColor, uFireTint);
-    // The aura is full over the inner half of its blob, where the blob's
-    // (1 - r²)² is above a half, and fades out to its rim. It lights the
-    // coal and its sparks, which are bright, and leaves the dark soil.
-    float aura = uAuraLight * smoothstep(0.0, 0.5, fires.g) * smoothstep(uAuraFrom, uAuraTo, peak);
+    // A coal's aura lights its own pixels, where the mask holds its light,
+    // with any edge of a creature over it in proportion; among them, the
+    // bright ones, not the dark soil its faint glow lies on.
+    vec2 onCoals = (pixel - uCoalOrigin) / uCoalSize;
+    vec3 coals = texture2D(uCoals, vec2(onCoals.x, 1.0 - onCoals.y)).rgb;
+    float own = max(coals.r, max(coals.g, coals.b));
+    float aura = uAuraLight * smoothstep(0.0, uAuraFull, own) * smoothstep(uAuraFrom, uAuraTo, peak);
 
     // The lights add like light does: each lights a share of what the
     // others leave dark, so the sum is never below any and never above 1.

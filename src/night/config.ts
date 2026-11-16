@@ -166,23 +166,21 @@ export const NIGHT = {
     /** ...taken this share (0..1) of the way to the colour of the grades whose heat it is (GRADE_COLORS). */
     tint: 0.3,
     /**
-     * The light each coal gives itself: a soft upright blob round the coal
-     * and the tiny sparks rising from it, within which whatever is bright
-     * keeps its own colour, as a light should, where the night would turn
-     * a pale coal as cold and blue as the navii; the dark soil there is
-     * left alone. It is at full strength over the inner half of its radii,
-     * fades to nothing at the rim and goes with the coal when the spark is
-     * drawn in.
+     * The light each coal gives itself: over the coal, its wing and the
+     * tiny sparks rising from it, where nothing stands in front of them
+     * (CoalMask), whatever is bright keeps its own colour, as a light
+     * should, where the night would turn a pale coal as cold and blue as
+     * the navii; the dark soil its faint glow lies on is left alone.
      */
     aura: {
-      /** Radius of the blob across, in world units. */
-      radius: 9,
-      /** How much taller than wide the blob is, to hold the sparks rising from the coal. */
-      stretch: 2.2,
-      /** Height of its centre above the coal's ground point, in world units. */
-      rise: 10,
       /** Brightness at full strength, as a share of full light (0..1). */
       light: 1,
+      /**
+       * How much of a coal's light (its brightest channel, 0..1) a pixel
+       * must show to be lit in full; less is lit in proportion, as at the
+       * soft rim of a coal or the edge of a creature over it.
+       */
+      full: 0.15,
       /**
        * Brightest channel of a pixel (0..1) from which it starts to keep its
        * colour, and from which it keeps all of it: above the brightest soil,

@@ -12,7 +12,21 @@ const cfg: SparkConfig = {
   popHeight: 8,
   settle: 0.35,
   hover: 4,
-  pull: { startSpeed: 15, acceleration: 200, maxSpeed: 600, curve: 40, waver: 18, waverRate: 2.5, arrive: 2 },
+  pull: {
+    startSpeed: 15,
+    acceleration: 200,
+    maxSpeed: 600,
+    curve: 40,
+    waver: 18,
+    waverRate: 2.5,
+    steer: 6000,
+    brake: 0.5,
+    turnDelay: 0.1,
+    restless: 0.4,
+    arrive: 4,
+    widenAfter: 1,
+    widen: 40,
+  },
 };
 
 const STEP = 1 / 60;
@@ -87,55 +101,177 @@ describe('a dropped spark', () => {
   });
 });
 
-describe('a pulled spark', () => {
-  /** Hero paths at walking speed, as functions of time, all starting at the origin. */
-  const paths: Record<string, (t: number) => Point> = {
-    standing: () => ({ x: 0, y: 0 }),
-    'running away': (t) => ({ x: -HERO_SPEED * t, y: 0 }),
-    'running past': (t) => ({ x: 0, y: HERO_SPEED * t }),
-    circling: (t) => ({ x: 40 * Math.cos((HERO_SPEED / 40) * t) - 40, y: 40 * Math.sin((HERO_SPEED / 40) * t) }),
-  };
+/** Where the skull's eye is relative to the hero, facing right; mirrored when he faces left. */
+const SKULL = { x: 23.6, y: -21 };
+/** How far the eye bobs as the hero walks, and every how many steps it moves. */
+const BOB = { height: 1.5, steps: 5 };
 
-  for (const [name, path] of Object.entries(paths)) {
-    for (const curl of [1, -1]) {
-      it(`reaches the moving eye within a second, the hero ${name}, curving ${curl > 0 ? 'one' : 'the other'} way`, () => {
-        const dropped = dropSpark(cfg.pickupRadius - 5, 10, 18, 3, 0, curl, 0, cfg);
-        const spark: Spark = { ...dropped, state: 'lying', age: 1, lift: 0 };
-        let credited = 0;
-        let t = 0;
-        let gaps: number[] = [];
-        while (spark.state !== 'absorbed' && t < 1) {
-          const hero = path(t);
-          credited += stepSpark(spark, hero, eyeOf(hero), STEP, cfg);
-          if (spark.state === 'pulled') gaps.push(spark.gap);
-          t += STEP;
-        }
-        expect(spark.state).toBe('absorbed');
-        expect(credited).toBe(3);
-        // Once it is fast, every step closes in on the eye.
-        gaps = gaps.slice(Math.ceil(0.3 / STEP));
-        for (let i = 1; i < gaps.length; i++) expect(gaps[i]).toBeLessThan(gaps[i - 1]);
-      });
+/** Which way the hero walks on a step of a scripted motion: components in -1..1, as from the keys. */
+type Motion = (step: number) => readonly [number, number];
+
+const KEYS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+];
+
+/**
+ * Hero motions as a player makes them with the keys, one direction per step:
+ * the hero faces the way he last walked sideways, so his eye swaps sides of
+ * him when he turns, and it bobs while he walks. Each starts facing right.
+ */
+const motions: Record<string, Motion> = {
+  standing: () => [0, 0],
+  'running away': () => [-1, 0],
+  'running towards': () => [1, 0],
+  'running past': () => [0, 1],
+  'doubling back': (step) => (step < 15 ? [-1, 0] : [1, 0]),
+  'turning every 6 steps': (step) => (Math.floor(step / 6) % 2 ? [1, 0] : [-1, 0]),
+  'turning every 3 steps': (step) => (Math.floor(step / 3) % 2 ? [1, 0] : [-1, 0]),
+  'turning every 20 steps': (step) => (Math.floor(step / 20) % 2 ? [1, 0] : [-1, 0]),
+  'zig-zagging': (step) => (Math.floor(step / 10) % 2 ? [-1, 1] : [-1, -1]),
+  'circling on the keys': (step) => KEYS[Math.floor(step / 6) % 8],
+  'circling wide': (step) => {
+    const angle = (HERO_SPEED / 40) * step * STEP;
+    return [-Math.sin(angle), Math.cos(angle)];
+  },
+};
+
+interface Flight {
+  /** Seconds from being drawn in to being drunk in, or Infinity. */
+  time: number;
+  credited: number;
+  /** Where it was at the end of every step it flew. */
+  path: Point[];
+  /** Distance to the eye at the end of every step it flew. */
+  gaps: number[];
+  /** Where the eye was at the end of every step it flew. */
+  eyes: Point[];
+  /** The last step on which the eye swapped sides of the hero, -1 if it never did. */
+  lastTurn: number;
+}
+
+/**
+ * Flies a spark that lies just inside the pickup radius from the hero
+ * towards `angle` (radians), drawn in as he starts on `motion` facing
+ * `facing`, for at most three seconds.
+ */
+function fly(motion: Motion, angle: number, curl: number, phase: number, facing = 1): Flight {
+  const distance = cfg.pickupRadius - 1;
+  const hero = { x: 0, y: 0 };
+  let bob = 0;
+  const eye = () => ({ x: hero.x + facing * SKULL.x, y: hero.y + SKULL.y + bob });
+  const lying = dropSpark(Math.cos(angle) * distance, Math.sin(angle) * distance, 18, 3, 0, curl, phase, cfg);
+  const spark: Spark = { ...lying, state: 'lying', age: 1, lift: 0 };
+  let credited = stepSpark(spark, hero, eye(), 0, cfg);
+  expect(spark.state).toBe('pulled');
+  const path: Point[] = [];
+  const gaps: number[] = [];
+  const eyes: Point[] = [];
+  let lastTurn = -1;
+  let step = 0;
+  while (spark.state === 'pulled' && step < 3 / STEP) {
+    const [dx, dy] = motion(step);
+    const length = Math.hypot(dx, dy);
+    if (length > 0) {
+      hero.x += (dx / length) * HERO_SPEED * STEP;
+      hero.y += (dy / length) * HERO_SPEED * STEP;
     }
+    if (Math.abs(dx) > 1e-9 && Math.sign(dx) !== facing) {
+      facing = Math.sign(dx);
+      lastTurn = step;
+    }
+    bob = length > 0 && Math.floor(step / BOB.steps) % 2 ? BOB.height : 0;
+    credited += stepSpark(spark, hero, eye(), STEP, cfg);
+    step++;
+    path.push({ x: spark.x, y: spark.y });
+    eyes.push(eye());
+    gaps.push(Math.hypot(eye().x - spark.x, eye().y - spark.y));
+  }
+  return { time: spark.state === 'absorbed' ? step * STEP : Infinity, credited, path, gaps, eyes, lastTurn };
+}
+
+/** Every start the flights are tried from: round the hero, curving either way, wavering out of step. */
+const starts: [number, number, number][] = [];
+for (let degrees = 0; degrees < 360; degrees += 30) {
+  for (const curl of [1, -1]) for (const phase of [0, 2, 4]) starts.push([(degrees * Math.PI) / 180, curl, phase]);
+}
+
+describe('a pulled spark', () => {
+  for (const [name, motion] of Object.entries(motions)) {
+    describe(`with the hero ${name}`, () => {
+      const flights = starts.map(([angle, curl, phase]) => fly(motion, angle, curl, phase));
+
+      it('is drunk in, and credited once', () => {
+        for (const flight of flights) {
+          expect(flight.time).toBeLessThan(Infinity);
+          expect(flight.credited).toBe(3);
+        }
+      });
+
+      it(name === 'standing' ? 'takes about 0.7 s' : 'takes well under 1.2 s', () => {
+        for (const flight of flights) {
+          if (name === 'standing') expect(flight.time).toBeGreaterThan(0.6);
+          expect(flight.time).toBeLessThan(name === 'standing' ? 0.9 : 1.2);
+        }
+      });
+
+      it('never changes its velocity by more than 100 units a second in a step', () => {
+        // `steer` (6000 units a second, each second) over a 60th of a second.
+        const bound = cfg.pull.steer * STEP;
+        for (const { path } of flights) {
+          // The velocity of each step from where it was before and after;
+          // the last step is the one into the socket.
+          for (let i = 2; i < path.length - 1; i++) {
+            const dvx = (path[i].x - 2 * path[i - 1].x + path[i - 2].x) / STEP;
+            const dvy = (path[i].y - 2 * path[i - 1].y + path[i - 2].y) / STEP;
+            expect(Math.hypot(dvx, dvy)).toBeLessThanOrEqual(bound + 1e-6);
+          }
+        }
+      });
+
+      it('never circles the eye', () => {
+        for (const { path, eyes, gaps, lastTurn } of flights) {
+          // Once the hero has stopped turning and it has had time to follow
+          // the eye, it closes in on it every tenth of a second; going round
+          // the eye would open the gap again.
+          const settled = lastTurn + 1 + Math.ceil(cfg.pull.restless / STEP);
+          const window = Math.round(0.1 / STEP);
+          for (let i = settled; i + window < gaps.length; i++) expect(gaps[i + window]).toBeLessThan(gaps[i]);
+          // Seen from the eye, it comes round by well under half a turn.
+          let winding = 0;
+          for (let i = Math.max(1, settled); i < path.length - 1 && gaps[i] > 2 * cfg.pull.arrive; i++) {
+            const before = Math.atan2(path[i - 1].y - eyes[i - 1].y, path[i - 1].x - eyes[i - 1].x);
+            const after = Math.atan2(path[i].y - eyes[i].y, path[i].x - eyes[i].x);
+            winding += Math.atan2(Math.sin(after - before), Math.cos(after - before));
+          }
+          expect(Math.abs(winding)).toBeLessThan(Math.PI / 2);
+        }
+      });
+    });
   }
 
-  it('takes long enough to be seen from anywhere on the edge of the radius, as long when the hero runs away', () => {
-    for (let degrees = 0; degrees < 360; degrees += 30) {
-      const angle = (degrees * Math.PI) / 180;
-      const [x, y] = [Math.cos(angle) * (cfg.pickupRadius - 0.1), Math.sin(angle) * (cfg.pickupRadius - 0.1)];
-      const times = [0, HERO_SPEED].map((speed) => {
-        const spark: Spark = { ...dropSpark(x, y, 18, 1, 0, 1, 0, cfg), state: 'lying', age: 1, lift: 0 };
-        let t = 0;
-        while (spark.state !== 'absorbed') {
-          const hero = { x: -Math.cos(angle) * speed * t, y: -Math.sin(angle) * speed * t };
-          stepSpark(spark, hero, eyeOf(hero), STEP, cfg);
-          t += STEP;
-        }
-        return t;
-      });
-      expect(times[0]).toBeGreaterThan(0.6);
-      expect(times[0]).toBeLessThan(0.9);
-      expect(times[1]).toBeCloseTo(times[0], 1);
+  it('keeps up with a hero running straight away from it, taking about as long as when he stands', () => {
+    for (const [angle, curl, phase] of starts) {
+      const away = [-Math.cos(angle), -Math.sin(angle)] as const;
+      // Already facing the way he runs, so his eye stays where it is on him.
+      const facing = away[0] < -1e-9 ? -1 : 1;
+      const standing = fly(motions.standing, angle, curl, phase, facing).time;
+      const running = fly(() => away, angle, curl, phase, facing).time;
+      expect(Math.abs(running - standing)).toBeLessThan(0.1);
+    }
+  });
+
+  it('swings round in an arc when the hero turns, without a jump', () => {
+    // The hero faces right and turns left as the spark is half way.
+    const { path } = fly((step) => (step < 20 ? [0, 0] : [-1, 0]), Math.PI / 2, 1, 0);
+    for (let i = 1; i < path.length - 1; i++) {
+      expect(Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y)).toBeLessThan(8);
     }
   });
 

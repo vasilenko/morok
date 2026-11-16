@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CFG } from '../config';
-import { COAL, coalLight, GRADE_COLORS, restingWing, smoulder, unfurl, WING, wingCover } from './coals';
+import { COAL, coalLight, colorAlong, GRADE_COLORS, restingWing, smoulder, unfurl, WING, wingCover } from './coals';
 
 const peak = (light: readonly number[]) => Math.max(...light);
 
@@ -121,5 +121,29 @@ describe('the resting wing', () => {
     let winged = 0;
     for (let i = 0; i < count; i++) if (restingWing(random() * Math.PI * 2, 0.2)) winged++;
     expect(winged / count).toBeCloseTo(0.2, 1);
+  });
+});
+
+describe('a colour along stops', () => {
+  const stops = [0xff8000, 0x804020, 0x000000];
+
+  it('starts at the first stop and ends at the last', () => {
+    expect(colorAlong(stops, 0)).toBe(0xff8000);
+    expect(colorAlong(stops, 1)).toBe(0x000000);
+  });
+
+  it('passes the middle stops at even steps', () => {
+    expect(colorAlong(stops, 0.5)).toBe(0x804020);
+  });
+
+  it('mixes each channel linearly between neighbouring stops', () => {
+    expect(colorAlong(stops, 0.25)).toBe(0xc06010);
+    expect(colorAlong(stops, 0.75)).toBe(0x402010);
+  });
+
+  it('holds the end stops outside 0..1, and a single stop throughout', () => {
+    expect(colorAlong(stops, -1)).toBe(0xff8000);
+    expect(colorAlong(stops, 2)).toBe(0x000000);
+    expect(colorAlong([0x123456], 0.4)).toBe(0x123456);
   });
 });

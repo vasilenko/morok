@@ -134,10 +134,11 @@ export const CFG = {
      * `pickupRadius`, so every flight takes about as long. It is aimed at
      * the eye but turned aside by up to `curve` degrees, a turn
      * that eases off as it closes in, and wavers by up to `waver` degrees
-     * either way `waverRate` times a second. The eye carries it along as
-     * the hero moves, so the flight takes as long when he runs away as
-     * when he stands; as long as `curve` plus `waver` is well short of 90,
-     * every step brings it closer and it always arrives.
+     * either way `waverRate` times a second. It keeps up with the hero as
+     * he moves, so the flight takes about as long when he runs away as
+     * when he stands, but it has a velocity of its own that turns and
+     * changes speed smoothly, so his turns and reversals swing it round in
+     * an arc instead of jerking it after him.
      */
     pull: {
       startSpeed: 15,
@@ -146,8 +147,40 @@ export const CFG = {
       curve: 40,
       waver: 18,
       waverRate: 2.5,
-      /** It is drunk in once this close to the eye. */
-      arrive: 2,
+      /**
+       * The most its velocity changes by in a second, in world units per
+       * second: about 100 a frame at 60 frames a second. Well above what a
+       * flight to a hero standing still asks for, so that flight keeps its
+       * curve, and above what a hero circling on the keys asks for.
+       */
+      steer: 6000,
+      /**
+       * It never flies at the eye faster than it could stop in the distance
+       * left using this share of `steer`, so it slows into the socket
+       * instead of shooting past it or circling it.
+       */
+      brake: 0.5,
+      /**
+       * Seconds it keeps flying to the side of the hero the eye was on
+       * after he turns, before it swings round after the eye.
+       */
+      turnDelay: 0.1,
+      /**
+       * If the eye had stayed on its side for less than this many seconds
+       * before he turned, the hero is turning to and fro: it keeps to its
+       * side until the eye has stayed this long on the other, waiting for
+       * it to come back rather than being tossed from side to side.
+       */
+      restless: 0.4,
+      /** It is drunk in once its step passes this close to the eye... */
+      arrive: 4,
+      /**
+       * ...and, once it has flown `widenAfter` seconds, from `widen` world
+       * units further for every second more, so it arrives however the hero
+       * moves.
+       */
+      widenAfter: 1,
+      widen: 40,
     },
   },
 };

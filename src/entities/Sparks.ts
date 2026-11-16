@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COAL, colorHex, GRADE_COLORS, restingWing, smoulder, unfurl, WING } from '../art/coals';
+import { COAL, colorAlong, colorHex, GRADE_COLORS, restingWing, smoulder, unfurl, WING } from '../art/coals';
 import { ART_SCALE, coalFrame, greyTint, TEX, WING_FRAME } from '../art/textures';
 import { CFG } from '../config';
 import { NIGHT } from '../night/config';
@@ -15,6 +15,18 @@ interface ShownSpark extends Spark {
   /** Where it was drawn last frame, to lay its trail in flight. */
   lastX: number;
   lastY: number;
+}
+
+/** A tiny spark rising from a coal on the ground. */
+interface Speck {
+  sprite: Phaser.GameObjects.Image;
+  /** Its speed in world units per second, its age and its lifespan in seconds. */
+  vx: number;
+  vy: number;
+  age: number;
+  life: number;
+  /** The colours it fades through, from birth to death. */
+  colors: readonly number[];
 }
 
 /**
@@ -75,7 +87,8 @@ const FLIGHT_DEPTH = 1e9;
  * up, fading from pale through its colour to dark as they rise: `rate`
  * per second from each coal on average, rising at `speed` world units per
  * second, wandering sideways by up to `drift`, gone in `life` seconds;
- * `size` is a spark's radius at birth in world units.
+ * `size` is a spark's radius at birth in world units, shrinking to `shrink`
+ * of it, and `alpha` its opacity at birth, fading to nothing.
  */
 const RISE = {
   rate: 1.6,
@@ -83,10 +96,19 @@ const RISE = {
   drift: 4,
   life: { min: 0.6, max: 1.2 },
   size: 0.55,
+  shrink: 0.3,
   alpha: 0.95,
 };
 /** Rising sparks are only shed by coals within this margin of the view, in world units. */
 const RISE_MARGIN = 24;
+/** The colours a rising spark of each grade fades through: pale, its own and dark. */
+const RISE_COLORS = GRADE_COLORS.map((color) => [colorHex(color, 0.6), colorHex(color), colorHex(color, 0, 0.35)]);
+/**
+ * How far in front of its coal a rising spark is sorted: just enough to
+ * show over the coal's glow, so whatever stands in front of the coal
+ * covers its sparks as well.
+ */
+const RISE_DEPTH = 0.01;
 
 /**
  * The short trail of sparks a spark leaves in flight: laid along its path
@@ -114,39 +136,29 @@ export class Sparks {
   private readonly field: ShownSpark[] = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
   private readonly wingPool: Phaser.GameObjects.Image[] = [];
+  private readonly specks: Speck[] = [];
+  private readonly speckPool: Phaser.GameObjects.Image[] = [];
   private readonly afterglows: Afterglow[] = [];
+  /** Every sprite that shows a spark's own light: the coals, their wings and the sparks they shed. */
+  private readonly lights = new WeakSet<Phaser.GameObjects.GameObject>();
   /** The scene clock as of the last update, in seconds. */
   private clock = 0;
 
   /** One shared emitter per grade lays every flying spark's trail. */
   private readonly trails: Phaser.GameObjects.Particles.ParticleEmitter[];
-  /** One shared emitter per grade sheds the sparks rising from every coal. */
-  private readonly rising: Phaser.GameObjects.Particles.ParticleEmitter[];
 
   /**
-   * `layer` is the depth-sorted entity layer the coals lie in; `lights` is
-   * a layer of its own over it for the additive sparks they shed and trail,
-   * so they never break the entities' batches.
+   * `layer` is the depth-sorted entity layer the coals lie in, with the
+   * sparks rising from them, which sort with their coal so that whatever
+   * stands in front of it covers them too; `lights` is a layer of its own
+   * over it for the additive trails of the sparks in flight, which are
+   * drawn over everyone, so they never break the entities' batches.
    */
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly layer: Phaser.GameObjects.Layer,
     lights: Phaser.GameObjects.Layer,
   ) {
-    this.rising = GRADE_COLORS.map((color) => {
-      const emitter = scene.add.particles(0, 0, TEX.dot, {
-        emitting: false,
-        speedX: { min: -RISE.drift, max: RISE.drift },
-        speedY: { min: -RISE.speed.max, max: -RISE.speed.min },
-        lifespan: { min: RISE.life.min * 1000, max: RISE.life.max * 1000 },
-        scale: { start: RISE.size / DOT_RADIUS, end: (0.3 * RISE.size) / DOT_RADIUS },
-        alpha: { start: RISE.alpha, end: 0 },
-        color: [colorHex(color, 0.6), colorHex(color), colorHex(color, 0, 0.35)],
-        blendMode: Phaser.BlendModes.ADD,
-      });
-      lights.add(emitter);
-      return emitter;
-    });
     this.trails = GRADE_COLORS.map((color) => {
       const emitter = scene.add.particles(0, 0, TEX.dot, {
         emitting: false,
@@ -165,6 +177,9 @@ export class Sparks {
   get size(): number {
     return this.field.length;
   }
+
+  /** Whether `object` shows a spark's own light: a coal, a wing or a spark a coal sheds. */
+  readonly glows = (object: Phaser.GameObjects.GameObject): boolean => this.lights.has(object);
 
   /**
    * A spark worth `worth` falls from a corpse standing on the ground point
@@ -200,6 +215,7 @@ export class Sparks {
     let absorbed = 0;
     const view = this.scene.cameras.main.worldView;
     const shed = RISE.rate * dt;
+    this.riseSpecks(dt);
     for (const spark of this.field) {
       const wasOnGround = onGround(spark);
       const [x, y] = [spark.x, spark.y];
@@ -219,17 +235,14 @@ export class Sparks {
 
   /**
    * Hands every fire's heat on the ground to `stamp`: the lying sparks,
-   * growing in after the drop, with the auras of their coals, and the
-   * afterglows of those gone.
+   * growing in after the drop, and the afterglows of those gone.
    */
   fires(stamp: FireStamp): void {
     const { fadeIn, fadeOut } = NIGHT.fire;
     for (const spark of this.field) {
       if (!onGround(spark)) continue;
       const grade = sparkGrade(spark.worth, CFG.spark.grades);
-      const strength = this.strength(spark, fadeIn);
-      stamp.heat(spark.x, spark.y, grade, strength);
-      stamp.aura(spark.x, spark.y - spark.lift, strength);
+      stamp.heat(spark.x, spark.y, grade, this.strength(spark, fadeIn));
     }
     for (const glow of this.afterglows) {
       const left = fadeOut > 0 ? 1 - (this.clock - glow.at) / fadeOut : 0;
@@ -325,11 +338,51 @@ export class Sparks {
     });
   }
 
-  /** A tiny spark breaks off the coal's heart and starts to rise. */
+  /**
+   * A tiny spark breaks off the coal's heart and starts to rise. It is drawn
+   * as light added to what is under it (TEX.speck), like the trails.
+   */
   private shed(spark: ShownSpark): void {
     const grade = sparkGrade(spark.worth, CFG.spark.grades);
     const x = spark.x + (Math.random() - 0.5) * 2 * COAL.core;
-    this.rising[grade].emitParticleAt(x, spark.y - CFG.spark.hover - spark.lift - 0.5 * COAL.core);
+    const y = spark.y - CFG.spark.hover - spark.lift - 0.5 * COAL.core;
+    const between = (range: { min: number; max: number }) => Phaser.Math.FloatBetween(range.min, range.max);
+    const colors = RISE_COLORS[grade];
+    const sprite = (this.speckPool.pop()?.setVisible(true) ?? this.addSpeck())
+      .setPosition(x, y)
+      .setDepth(spark.y + RISE_DEPTH)
+      .setScale(RISE.size / DOT_RADIUS)
+      .setAlpha(RISE.alpha)
+      .setTint(colors[0]);
+    this.specks.push({
+      sprite,
+      vx: Phaser.Math.FloatBetween(-RISE.drift, RISE.drift),
+      vy: -between(RISE.speed),
+      age: 0,
+      life: between(RISE.life),
+      colors,
+    });
+  }
+
+  /** Moves the rising sparks on by `dt` seconds, shrinking and fading them, and puts away those gone. */
+  private riseSpecks(dt: number): void {
+    let kept = 0;
+    for (const speck of this.specks) {
+      speck.age += dt;
+      if (speck.age >= speck.life) {
+        this.speckPool.push(speck.sprite.setVisible(false));
+        continue;
+      }
+      const t = speck.age / speck.life;
+      const sprite = speck.sprite;
+      sprite
+        .setPosition(sprite.x + speck.vx * dt, sprite.y + speck.vy * dt)
+        .setScale((RISE.size * Phaser.Math.Linear(1, RISE.shrink, t)) / DOT_RADIUS)
+        .setAlpha(RISE.alpha * (1 - t))
+        .setTint(colorAlong(speck.colors, t));
+      this.specks[kept++] = speck;
+    }
+    this.specks.length = kept;
   }
 
   /**
@@ -361,7 +414,15 @@ export class Sparks {
     const frame = WING.frame;
     const wing = this.scene.add.image(0, 0, TEX.coal, WING_FRAME).setOrigin(-frame.left / frame.width, -frame.top / frame.height);
     this.layer.add(wing);
+    this.lights.add(wing);
     return wing;
+  }
+
+  private addSpeck(): Phaser.GameObjects.Image {
+    const speck = this.scene.add.image(0, 0, TEX.speck);
+    this.layer.add(speck);
+    this.lights.add(speck);
+    return speck;
   }
 
   private addSprite(): Phaser.GameObjects.Image {
@@ -369,6 +430,7 @@ export class Sparks {
     const frame = COAL.frame;
     const sprite = this.scene.add.image(0, 0, TEX.coal, 0).setOrigin(-frame.left / frame.width, -frame.top / frame.height);
     this.layer.add(sprite);
+    this.lights.add(sprite);
     return sprite;
   }
 }
