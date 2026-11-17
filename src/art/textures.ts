@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import groundUrl from './sprites/kurgan-ground.jpg';
 import naviaSheet from './sprites/navia.json';
 import naviaUrl from './sprites/navia.png';
+import relicsAtlas from './sprites/relics.json';
+import relicsUrl from './sprites/relics.png';
 import sceneryAtlas from './sprites/scenery.json';
 import sceneryUrl from './sprites/scenery.png';
 import stakeUrl from './sprites/stake.png';
@@ -38,7 +40,15 @@ export const TEX = {
   ground: 'ground',
   scenery: 'scenery',
   teeth: 'teeth',
+  relics: 'relics',
+  ring: 'ring',
 } as const;
+
+/** The frames of the relics' atlas: the funeral bell and the sickle, as seen in the world. */
+export const RELIC_FRAMES = {
+  bell: 'bell',
+  sickle: 'sickle',
+} as const satisfies Record<string, keyof typeof relicsAtlas.frames>;
 
 /** The four drawings of a fang in the wolf teeth's atlas, each lying with its tip to the right. */
 export const FANG_FRAMES = Object.keys(teethAtlas.frames);
@@ -220,6 +230,64 @@ function createCoals(textures: Phaser.Textures.TextureManager): void {
   texture.add(WING_FRAME, 0, coals * coalW, 0, wingW, wingH);
 }
 
+/**
+ * The funeral bell's ring as it runs out along the ground: a pale band
+ * that brightens towards its front, which is the frame's circle, and ends
+ * there in a soft rim. A band of a fixed width is a smaller share of a
+ * wider ring, so there is a frame for each share in `shares`, from the
+ * whole radius down to a thin line; the bell picks the frame nearest the
+ * share its band takes now, and scales and flattens it to the ring.
+ */
+export const RING = {
+  /** Side of a frame, in pixels; the front is a circle `front` pixels from its middle. */
+  size: 256,
+  front: 124,
+  /** Width of the soft rim outside the front, in pixels. */
+  rim: 2.5,
+  /** The band's width as a share of the radius, frame by frame, from wide to thin. */
+  shares: Array.from({ length: 12 }, (_, i) => 0.9 * (0.025 / 0.9) ** (i / 11)),
+};
+
+/** The frame of the ring's texture whose band is nearest `share` of the radius wide. */
+export function ringFrame(share: number): number {
+  let best = 0;
+  RING.shares.forEach((s, i) => {
+    if (Math.abs(Math.log(s / share)) < Math.abs(Math.log(RING.shares[best] / share))) best = i;
+  });
+  return best;
+}
+
+/** The ring's frames in a grid, white, of the opacity of their light: drawn added, tinted by the bell. */
+function createRing(textures: Phaser.Textures.TextureManager): void {
+  const { size, front, rim, shares } = RING;
+  const columns = 4;
+  const rows = Math.ceil(shares.length / columns);
+  const { canvas, g } = makeCanvas(size * columns, size * rows, 1);
+  const image = g.createImageData(canvas.width, canvas.height);
+  shares.forEach((share, frame) => {
+    const [left, top] = [(frame % columns) * size, Math.floor(frame / columns) * size];
+    for (let j = 0; j < size; j++) {
+      for (let i = 0; i < size; i++) {
+        const r = Math.hypot(i + 0.5 - size / 2, j + 0.5 - size / 2);
+        // 0 at the band's inner edge, 1 at the front.
+        const across = (r / front - (1 - share)) / share;
+        if (across <= 0) continue;
+        const light = Math.min(1, across) ** 1.6 * (1 - smoothstep(front, front + rim, r));
+        const at = ((top + j) * canvas.width + left + i) * 4;
+        image.data.set([255, 255, 255, Math.round(255 * light)], at);
+      }
+    }
+  });
+  g.putImageData(image, 0, 0);
+  const texture = textures.addCanvas(TEX.ring, canvas)!;
+  shares.forEach((_, frame) => texture.add(frame, 0, (frame % columns) * size, Math.floor(frame / columns) * size, size, size));
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -240,6 +308,7 @@ export function loadSprites(load: Phaser.Loader.LoaderPlugin): void {
   load.image(TEX.ground, groundUrl);
   load.atlas(TEX.scenery, sceneryUrl, sceneryAtlas);
   load.atlas(TEX.teeth, teethUrl, teethAtlas);
+  load.atlas(TEX.relics, relicsUrl, relicsAtlas);
 }
 
 /** Animations are global, so they are created once at boot for every scene. */
@@ -272,4 +341,5 @@ export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createShadow(textures);
   createSpeck(textures, createDot(textures));
   createCoals(textures);
+  createRing(textures);
 }

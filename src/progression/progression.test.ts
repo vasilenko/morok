@@ -5,6 +5,8 @@ import { gainXp, itemStats, levelCost, newProgress, offer, pick, upgradable, typ
 
 const levels: LevelConfig = { first: 120, step: 90, choices: 3 };
 const ladders: ItemLadders = CFG.items;
+/** The first three items alone, for rules that read more plainly with no more cards than fit. */
+const three = { stake: ladders.stake, teeth: ladders.teeth, hagStone: ladders.hagStone } as unknown as ItemLadders;
 
 /** A random source that always returns the same draw. */
 const always = (value: number) => () => value;
@@ -39,7 +41,7 @@ describe('a new run', () => {
   it('starts at level 1 with only the stake, at level 1', () => {
     const progress = newProgress(ladders);
     expect(progress.level).toBe(1);
-    expect(progress.items).toEqual({ stake: 1, teeth: 0, hagStone: 0 });
+    expect(progress.items).toEqual({ stake: 1, teeth: 0, bell: 0, hagStone: 0 });
   });
 });
 
@@ -49,21 +51,21 @@ describe('the cards offered', () => {
   });
 
   it('are every item not at its top level, in listed order', () => {
-    const progress = newProgress(ladders);
+    const progress = newProgress(three);
     progress.choices = 1;
-    expect(offer(progress, ladders, levels, always(0.99))).toEqual(['stake', 'teeth', 'hagStone']);
+    expect(offer(progress, three, levels, always(0.99))).toEqual(['stake', 'teeth', 'hagStone']);
   });
 
   it('leave out the items at their top level', () => {
-    const progress = newProgress(ladders);
+    const progress = newProgress(three);
     progress.items.stake = 5;
     progress.choices = 1;
-    expect(upgradable(progress, ladders)).toEqual(['teeth', 'hagStone']);
-    expect(offer(progress, ladders, levels, Math.random)).toEqual(['teeth', 'hagStone']);
+    expect(upgradable(progress, three)).toEqual(['teeth', 'hagStone']);
+    expect(offer(progress, three, levels, Math.random)).toEqual(['teeth', 'hagStone']);
   });
 
   it('are three at random when more can be raised', () => {
-    const many = { ...ladders, a: ladders.hagStone, b: ladders.hagStone } as unknown as ItemLadders;
+    const many = { ...three, a: ladders.hagStone, b: ladders.hagStone } as unknown as ItemLadders;
     const progress = newProgress(many);
     progress.choices = 1;
     const seen = new Set<string>();
@@ -78,7 +80,7 @@ describe('the cards offered', () => {
 
   it('lapse when nothing is left to raise, so levels keep counting without a choice', () => {
     const progress = newProgress(ladders);
-    progress.items = { stake: 5, teeth: 5, hagStone: 5 };
+    for (const id of Object.keys(ladders) as ItemId[]) progress.items[id] = 5;
     gainXp(progress, 120 + 210, levels);
     expect(progress.level).toBe(3);
     expect(offer(progress, ladders, levels, Math.random)).toEqual([]);
@@ -110,7 +112,7 @@ describe('a pick', () => {
     expect(() => pick(progress, ladders, 'hagStone')).toThrow();
   });
 
-  it('takes every item to its top level in fifteen picks, minus the stake it starts with', () => {
+  it('takes every item to its top level in five picks each, minus the stake it starts with', () => {
     const progress = newProgress(ladders);
     gainXp(progress, 1e7, levels);
     let picks = 0;
@@ -119,8 +121,8 @@ describe('a pick', () => {
       picks++;
       cards = offer(progress, ladders, levels, Math.random);
     }
-    expect(picks).toBe(14);
-    expect(progress.items).toEqual({ stake: 5, teeth: 5, hagStone: 5 });
+    expect(picks).toBe(5 * Object.keys(ladders).length - 1);
+    expect(progress.items).toEqual({ stake: 5, teeth: 5, bell: 5, hagStone: 5 });
     expect(progress.choices).toBe(0);
   });
 });
@@ -143,6 +145,16 @@ describe('the numbers each level gives', () => {
       { count: 3, damage: 15, radius: 100, period: 1.6 },
       { count: 4, damage: 15, radius: 100, period: 1.6 },
       { count: 5, damage: 15, radius: 115, period: 1.6 },
+    ]);
+  });
+
+  it('are the funeral bell ladder', () => {
+    expect([1, 2, 3, 4, 5].map((level) => itemStats(ladders, 'bell', level))).toEqual([
+      { damage: 10, radius: 110, cooldown: 5.0, knockback: 600 },
+      { damage: 10, radius: 140, cooldown: 5.0, knockback: 600 },
+      { damage: 15, radius: 140, cooldown: 4.2, knockback: 600 },
+      { damage: 15, radius: 170, cooldown: 4.2, knockback: 600 },
+      { damage: 30, radius: 170, cooldown: 3.5, knockback: 600 },
     ]);
   });
 
@@ -176,6 +188,20 @@ describe('a card', () => {
     expect(gainLine(ladders, 'teeth', 3)).toBe('Wounds for 15, circles wider');
     expect(gainLine(ladders, 'teeth', 5)).toBe('5 fangs, circles wider');
     expect(gainLine(ladders, 'hagStone', 2)).toBe('Draws sparks from 29% further');
+  });
+
+  it('reads every level of the funeral bell', () => {
+    expect(cardFor(newProgress(ladders), ladders, 'bell')).toMatchObject({
+      name: 'Funeral bell',
+      level: 1,
+      line: 'Tolls, and its ring wounds and throws back all around you',
+    });
+    expect([2, 3, 4, 5].map((level) => gainLine(ladders, 'bell', level))).toEqual([
+      'Rings out wider',
+      'Wounds for 15, tolls every 4.2 s',
+      'Rings out wider',
+      'Wounds for 30, tolls every 3.5 s',
+    ]);
   });
 
   it('has a line for every level of every item', () => {

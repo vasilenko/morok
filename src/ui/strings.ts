@@ -63,6 +63,15 @@ export const STRINGS = {
         radius: (from, to) => (to > from ? 'circles wider' : 'circles closer'),
       },
     },
+    bell: {
+      name: 'Funeral bell',
+      gain: 'Tolls, and its ring wounds and throws back all around you',
+      gains: {
+        damage: woundsFor,
+        radius: (from, to) => (to > from ? 'rings out wider' : 'rings out closer'),
+        cooldown: (_from, to) => `tolls every ${to} s`,
+      },
+    },
     hagStone: {
       name: 'Hag stone',
       gain: 'Draws sparks in from further away',

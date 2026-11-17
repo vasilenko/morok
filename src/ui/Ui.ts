@@ -1,3 +1,4 @@
+import bellUrl from '../art/sprites/item-bell.png';
 import hagStoneUrl from '../art/sprites/item-hag-stone.png';
 import stakeUrl from '../art/sprites/item-stake.png';
 import teethUrl from '../art/sprites/item-teeth.png';
@@ -19,7 +20,12 @@ export interface RunStats {
 const byId = (id: string) => document.getElementById(id)!;
 
 /** The items' pictures on the cards. */
-const PICTURES: Record<ItemId, string> = { stake: stakeUrl, teeth: teethUrl, hagStone: hagStoneUrl };
+const PICTURES: Record<ItemId, string> = {
+  stake: stakeUrl,
+  teeth: teethUrl,
+  bell: bellUrl,
+  hagStone: hagStoneUrl,
+};
 
 /**
  * Milliseconds the cards ignore every pick after they appear, as long as

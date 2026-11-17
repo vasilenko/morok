@@ -26,6 +26,7 @@ import {
 import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
+import { FuneralBell } from '../weapons/FuneralBell';
 import { WolfTeeth } from '../weapons/WolfTeeth';
 import { Ground } from '../world/Ground';
 import { Scenery } from '../world/Scenery';
@@ -67,6 +68,7 @@ export class GameScene extends Phaser.Scene {
   private fx!: Fx;
   private stake!: AspenStake;
   private teeth!: WolfTeeth;
+  private bell!: FuneralBell;
   private director!: WaveDirector;
   /** The layers that can stand in front of a coal or light it, for the night's mask of the coals. */
   private layers!: Record<'entities' | 'lights' | 'overhead', Phaser.GameObjects.Layer>;
@@ -92,12 +94,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Draw order, bottom to top: the soil, puddles on it, shadows, then
+    // Draw order, bottom to top: the soil, puddles on it, marks on the
+    // ground (the bell's ring), shadows, then
     // everything standing and the sparks on the ground with the tiny sparks
     // they shed, the trails of the sparks in flight, and what flies over it
     // all. Entities are depth-sorted by the y where they meet the ground.
     const tiles = this.add.layer();
     const puddles = this.add.layer();
+    const marks = this.add.layer();
     const shadows = this.add.layer();
     const entities = this.add.layer();
     const lights = this.add.layer();
@@ -120,6 +124,7 @@ export class GameScene extends Phaser.Scene {
     this.fx = new Fx(this, overhead);
     this.stake = new AspenStake(this, overhead, this.horde, this.fx);
     this.teeth = new WolfTeeth(this, entities, this.horde, this.fx);
+    this.bell = new FuneralBell(this, marks, overhead, this.horde, this.fx);
     this.equip();
     this.director = new WaveDirector(CFG.spawn);
     // Light, fog and the hurt flash, over everything the camera sees.
@@ -210,6 +215,7 @@ export class GameScene extends Phaser.Scene {
     const contact = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7, this.strike);
     this.kills += this.stake.update(dt, player, player.facing);
     this.kills += this.teeth.update(dt, player.x, player.feetY);
+    this.kills += this.bell.update(dt, player.x, player.feetY);
     this.horde.removeDead(this.dropSpark);
     const drunk = this.sparks.update(dt, this.clock, player, player.skullEye, this.pickupRadius);
     if (drunk > 0) {
@@ -232,6 +238,7 @@ export class GameScene extends Phaser.Scene {
   private equip(): void {
     this.stake.setLevel(this.progress.items.stake);
     this.teeth.setLevel(this.progress.items.teeth);
+    this.bell.setLevel(this.progress.items.bell);
   }
 
   /**

@@ -98,6 +98,29 @@ export const CFG = {
   },
 
   /**
+   * The funeral bell: every so often it tolls over the hero and a ring runs
+   * out along the ground from his feet, wounding once and throwing back
+   * every enemy its front passes. How hard, how far and how often is in
+   * `items.bell`.
+   */
+  bell: {
+    /** Seconds the ring takes to run out to its radius. */
+    spread: 0.4,
+    /**
+     * The front wounds an enemy it reaches in a step, or one up to this far
+     * inside where it was at the step before, so that an enemy stepping
+     * towards the hero as the front goes by is not missed.
+     */
+    slack: 8,
+    /** Width of the ring's pale band as it leaves the hero, and as it reaches its radius. */
+    band: [22, 5] as [number, number],
+    /** Seconds the ring lingers at its radius, fading out. */
+    linger: 0.15,
+    /** Seconds the bell shows over the hero at a toll: it swings once and fades. */
+    show: 0.9,
+  },
+
+  /**
    * Levels: the experience the skull drinks in fills a level, and each
    * level asks for more than the last.
    */
@@ -139,6 +162,20 @@ export const CFG = {
       { count: 3, damage: 15, radius: 100, period: 1.6 },
       { count: 4, damage: 15, radius: 100, period: 1.6 },
       { count: 5, damage: 15, radius: 115, period: 1.6 },
+    ],
+    /**
+     * Tolls every `cooldown` seconds; its ring runs out to `radius` (on the
+     * ground, so flattened like CFG.ground) and wounds every enemy it passes
+     * for `damage`, throwing it back away from where the bell tolled with
+     * `knockback`. From level 1 it lays a navia to rest and throws back
+     * what survives, an upyr above all, well clear of the hero.
+     */
+    bell: [
+      { damage: 10, radius: 110, cooldown: 5.0, knockback: 600 },
+      { damage: 10, radius: 140, cooldown: 5.0, knockback: 600 },
+      { damage: 15, radius: 140, cooldown: 4.2, knockback: 600 },
+      { damage: 15, radius: 170, cooldown: 4.2, knockback: 600 },
+      { damage: 30, radius: 170, cooldown: 3.5, knockback: 600 },
     ],
     /** Sparks are drawn in from `pickupRadius` instead of `spark.pickupRadius`. */
     hagStone: [
@@ -271,3 +308,4 @@ export type SparkConfig = typeof CFG.spark;
 export type LevelConfig = typeof CFG.levels;
 export type ItemLadders = typeof CFG.items;
 export type TeethConfig = typeof CFG.teeth;
+export type BellConfig = typeof CFG.bell;
