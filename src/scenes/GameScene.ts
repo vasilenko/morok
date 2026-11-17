@@ -26,6 +26,7 @@ import {
 import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
+import { BlackBook } from '../weapons/BlackBook';
 import { FuneralBell } from '../weapons/FuneralBell';
 import { Sickles } from '../weapons/Sickles';
 import { WolfTeeth } from '../weapons/WolfTeeth';
@@ -71,6 +72,7 @@ export class GameScene extends Phaser.Scene {
   private teeth!: WolfTeeth;
   private bell!: FuneralBell;
   private sickles!: Sickles;
+  private book!: BlackBook;
   private director!: WaveDirector;
   /** The layers that can stand in front of a coal or light it, for the night's mask of the coals. */
   private layers!: Record<'entities' | 'lights' | 'overhead', Phaser.GameObjects.Layer>;
@@ -97,7 +99,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     // Draw order, bottom to top: the soil, puddles on it, marks on the
-    // ground (the bell's ring), shadows, then
+    // ground (the bell's ring, the book's signs), shadows, then
     // everything standing and the sparks on the ground with the tiny sparks
     // they shed, the trails of the sparks in flight, and what flies over it
     // all. Entities are depth-sorted by the y where they meet the ground.
@@ -128,6 +130,7 @@ export class GameScene extends Phaser.Scene {
     this.teeth = new WolfTeeth(this, entities, this.horde, this.fx);
     this.bell = new FuneralBell(this, marks, overhead, this.horde, this.fx);
     this.sickles = new Sickles(this, entities, this.horde, this.fx);
+    this.book = new BlackBook(this, marks, entities, this.horde, this.fx);
     this.equip();
     this.director = new WaveDirector(CFG.spawn);
     // Light, fog and the hurt flash, over everything the camera sees.
@@ -220,6 +223,7 @@ export class GameScene extends Phaser.Scene {
     this.kills += this.teeth.update(dt, player.x, player.feetY);
     this.kills += this.bell.update(dt, player.x, player.feetY);
     this.kills += this.sickles.update(dt, player.x, player.feetY, player.facingY);
+    this.kills += this.book.update(dt, player.x, player.feetY);
     this.horde.removeDead(this.dropSpark);
     const drunk = this.sparks.update(dt, this.clock, player, player.skullEye, this.pickupRadius);
     if (drunk > 0) {
@@ -244,6 +248,7 @@ export class GameScene extends Phaser.Scene {
     this.teeth.setLevel(this.progress.items.teeth);
     this.bell.setLevel(this.progress.items.bell);
     this.sickles.setLevel(this.progress.items.sickle);
+    this.book.setLevel(this.progress.items.book);
   }
 
   /**
@@ -279,9 +284,9 @@ export class GameScene extends Phaser.Scene {
     this.scene.resume();
   }
 
-  /** Whether `object` gives its own light, which the night keeps in its colour: a coal or a sickle's trail. */
+  /** Whether `object` gives its own light, which the night keeps in its colour: a coal, a sickle's trail or a sign. */
   private readonly glows = (object: Phaser.GameObjects.GameObject): boolean =>
-    this.sparks.glows(object) || this.sickles.glows(object);
+    this.sparks.glows(object) || this.sickles.glows(object) || this.book.glows(object);
 
   /** A slain enemy leaves a spark where it fell. */
   private readonly dropSpark = (enemy: Enemy): void => {
@@ -370,8 +375,8 @@ export class GameScene extends Phaser.Scene {
     this.ground.cover(left, top, width + margin * 2, height + margin * 2);
     this.scenery.cover(left, top, width + margin * 2, height + margin * 2);
     // The fires' heat over the view, for the night to thin its fog by, and
-    // the coals' light and the sickle's trail as seen, for it to keep in
-    // their colour.
+    // the light of the coals, the sickle's trail and the book's signs as
+    // seen, for it to keep in their colour.
     this.night.fires.draw(this.player.x, this.player.y, width, height, (stamp) => this.sparks.fires(stamp));
     const { entities, lights, overhead } = this.layers;
     this.night.coals.draw(camera, entities, this.glows, lights, overhead);

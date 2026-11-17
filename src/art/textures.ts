@@ -4,6 +4,8 @@ import naviaSheet from './sprites/navia.json';
 import naviaUrl from './sprites/navia.png';
 import relicsAtlas from './sprites/relics.json';
 import relicsUrl from './sprites/relics.png';
+import signsAtlas from './sprites/signs.json';
+import signsUrl from './sprites/signs.png';
 import sceneryAtlas from './sprites/scenery.json';
 import sceneryUrl from './sprites/scenery.png';
 import stakeUrl from './sprites/stake.png';
@@ -13,7 +15,9 @@ import volhvSheet from './sprites/volhv-walk.json';
 import volhvUrl from './sprites/volhv-walk.png';
 import teethAtlas from './sprites/wolf-teeth.json';
 import teethUrl from './sprites/wolf-teeth.png';
+import { CFG } from '../config';
 import { COAL, coalLight, GRADE_COLORS, WING, wingCover } from './coals';
+import { bakeGlow, bakeRays, SIGN_LIGHT, signPixels, strands } from './signs';
 import { ART_SCALE, GROUND_ART_SCALE } from './scale';
 
 /**
@@ -43,7 +47,22 @@ export const TEX = {
   relics: 'relics',
   ring: 'ring',
   trail: 'trail',
+  signs: 'signs',
+  signLight: 'sign-light',
 } as const;
+
+/** The black book's four signs, each a frame of the signs' atlas: its cuts, dark, of the opacity of the cut. */
+export const SIGN_FRAMES = Object.keys(signsAtlas.frames);
+
+/** The frame of the signs' light that holds the glow of the cuts of `drawing`. */
+export function signGlowFrame(drawing: number): string {
+  return `glow-${drawing}`;
+}
+
+/** The frame of the signs' light that holds the rays of `drawing` rising from `band`, of strand group `group`. */
+export function signRaysFrame(drawing: number, band: number, group: number): string {
+  return `rays-${drawing}-${band}-${group}`;
+}
 
 /** The frames of the relics' atlas: the funeral bell and the sickle, as seen in the world. */
 export const RELIC_FRAMES = {
@@ -151,17 +170,35 @@ function createDot(textures: Phaser.Textures.TextureManager): HTMLCanvasElement 
 }
 
 /**
- * The dot as light, for sprites that must add their light to what is under
- * them like the ADD blend does, yet sort among the entities in their normal
- * blend, where another blend mode would break the batch at every one.
+ * Registers `light`, RGBA pixels of which only the colour counts, as a
+ * texture whose sprites add their light to what is under them like the
+ * ADD blend does, yet sort among the entities in their normal blend, where
+ * another blend mode would break the batch at every one.
  *
- * Its colour is the dot's light and its alpha a token 1/255 throughout.
- * Phaser's sprite shader divides a texel's colour by its alpha and
- * multiplies it back by the alpha it draws with, so such a texel comes out
- * as the dot's light, scaled by the sprite's tint and alpha, over a
- * background left all but untouched: the same as the dot added. It is
- * uploaded as raw data, since a canvas would premultiply that colour away.
+ * Its colour is the light and its alpha a token 1/255 throughout. Phaser's
+ * sprite shader divides a texel's colour by its alpha and multiplies it
+ * back by the alpha it draws with, so such a texel comes out as the light,
+ * scaled by the sprite's tint and alpha, over a background left all but
+ * untouched: the same as the light added. It is uploaded as raw data,
+ * since a canvas would premultiply that colour away. The alpha of `light`
+ * is overwritten.
  */
+export function addLightTexture(
+  textures: Phaser.Textures.TextureManager,
+  key: string,
+  light: Uint8Array,
+  width: number,
+  height: number,
+): Phaser.Textures.Texture {
+  for (let at = 3; at < light.length; at += 4) light[at] = 1;
+  const renderer = textures.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+  const glTexture = renderer.createUint8ArrayTexture(light, width, height, false);
+  // Smooth like the canvas textures, where raw data defaults to blocky.
+  renderer.setTextureFilter(glTexture, Phaser.Textures.FilterMode.LINEAR);
+  return textures.addGLTexture(key, glTexture)!;
+}
+
+/** The dot as light (see addLightTexture), for the tiny sparks the coals shed and the trails of those in flight. */
 function createSpeck(textures: Phaser.Textures.TextureManager, dot: HTMLCanvasElement): void {
   const { width, height } = dot;
   const pixels = dot.getContext('2d')!.getImageData(0, 0, width, height).data;
@@ -169,13 +206,8 @@ function createSpeck(textures: Phaser.Textures.TextureManager, dot: HTMLCanvasEl
   for (let at = 0; at < data.length; at += 4) {
     const alpha = pixels[at + 3] / 255;
     for (let c = 0; c < 3; c++) data[at + c] = Math.round(pixels[at + c] * alpha);
-    data[at + 3] = 1;
   }
-  const renderer = textures.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
-  const glTexture = renderer.createUint8ArrayTexture(data, width, height, false);
-  // Smooth like the canvas textures, where raw data defaults to blocky.
-  renderer.setTextureFilter(glTexture, Phaser.Textures.FilterMode.LINEAR);
-  textures.addGLTexture(TEX.speck, glTexture);
+  addLightTexture(textures, TEX.speck, data, width, height);
 }
 
 /** The frame of the coals' texture that holds the wing. */
@@ -285,6 +317,81 @@ function createRing(textures: Phaser.Textures.TextureManager): void {
 }
 
 /**
+ * The light of the black book's signs, baked from the darkness of their
+ * cuts (see signs.ts) into one texture of added light (see
+ * addLightTexture): for every drawing, the glow of its cuts, coloured, and
+ * its rays, band by band and group by group, white, for the book to tint.
+ * A glow frame is centred on the sign; a ray frame's bottom row is its
+ * band's last. The strands are drawn from a fixed seed, so every run's
+ * signs look alike.
+ */
+function createSignLight(textures: Phaser.Textures.TextureManager): void {
+  const { width, height } = signPixels(CFG.ground.flatten);
+  // Read back once per drawing, so the context is kept on the CPU.
+  const cut = { g: document.createElement('canvas').getContext('2d', { willReadFrequently: true })! };
+  cut.g.canvas.width = width;
+  cut.g.canvas.height = height;
+  const sheet = textures.get(TEX.signs);
+  const frames: Array<{ name: string; w: number; h: number; rgb: (p: number, c: number) => number }> = [];
+  SIGN_FRAMES.forEach((name, drawing) => {
+    const frame = sheet.get(name);
+    cut.g.clearRect(0, 0, width, height);
+    cut.g.drawImage(frame.source.image as CanvasImageSource, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, width, height);
+    const pixels = cut.g.getImageData(0, 0, width, height).data;
+    const mask = new Float32Array(width * height);
+    for (let p = 0; p < mask.length; p++) mask[p] = pixels[p * 4 + 3] / 255;
+
+    const glow = bakeGlow(mask, width, height);
+    const margin = SIGN_LIGHT.margin;
+    frames.push({ name: signGlowFrame(drawing), w: width + 2 * margin, h: height + 2 * margin, rgb: (p, c) => glow[p * 3 + c] });
+    const lines = strands(width, seeded(drawing + 1));
+    for (let band = 0; band < SIGN_LIGHT.bands; band++) {
+      for (let group = 0; group < SIGN_LIGHT.groups; group++) {
+        const rays = bakeRays(mask, width, height, band, group, lines);
+        frames.push({ name: signRaysFrame(drawing, band, group), w: width, h: rays.length / width, rgb: (p) => rays[p] });
+      }
+    }
+  });
+
+  // Shelves of frames, each with a gutter of clear pixels so smoothing never bleeds in a neighbour.
+  const gutter = 2;
+  const atlasWidth = 2048;
+  const placed: Array<{ x: number; y: number }> = [];
+  let [x, y, shelf] = [0, 0, 0];
+  for (const frame of frames) {
+    if (x + frame.w + 2 * gutter > atlasWidth) [x, y, shelf] = [0, y + shelf, 0];
+    placed.push({ x: x + gutter, y: y + gutter });
+    x += frame.w + 2 * gutter;
+    shelf = Math.max(shelf, frame.h + 2 * gutter);
+  }
+  const atlasHeight = y + shelf;
+  const data = new Uint8Array(atlasWidth * atlasHeight * 4);
+  frames.forEach((frame, i) => {
+    const at = placed[i];
+    for (let j = 0; j < frame.h; j++) {
+      for (let k = 0; k < frame.w; k++) {
+        const o = ((at.y + j) * atlasWidth + at.x + k) * 4;
+        for (let c = 0; c < 3; c++) data[o + c] = Math.round(255 * frame.rgb(j * frame.w + k, c));
+      }
+    }
+  });
+  const texture = addLightTexture(textures, TEX.signLight, data, atlasWidth, atlasHeight);
+  frames.forEach((frame, i) => texture.add(frame.name, 0, placed[i].x, placed[i].y, frame.w, frame.h));
+}
+
+/** A random source of uniform draws 0..1 that repeats for the same seed (mulberry32). */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * The sickle's trail, laid along the arc it has swept as a strip: its
  * length runs from the start edge (left) to the blade (right) and its
  * height from the outer edge of the crescent (top) to the inner (bottom).
@@ -338,6 +445,7 @@ export function loadSprites(load: Phaser.Loader.LoaderPlugin): void {
   load.atlas(TEX.scenery, sceneryUrl, sceneryAtlas);
   load.atlas(TEX.teeth, teethUrl, teethAtlas);
   load.atlas(TEX.relics, relicsUrl, relicsAtlas);
+  load.atlas(TEX.signs, signsUrl, signsAtlas);
 }
 
 /** Animations are global, so they are created once at boot for every scene. */
@@ -372,4 +480,5 @@ export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createCoals(textures);
   createRing(textures);
   createTrail(textures);
+  createSignLight(textures);
 }

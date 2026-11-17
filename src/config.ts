@@ -170,6 +170,25 @@ export const CFG = {
   },
 
   /**
+   * The black book: every so often it cuts signs into the ground under
+   * enemies near the hero, which strike a moment later wherever they lie.
+   * How many, how hard, how wide, how often and how soon is in
+   * `items.book`.
+   */
+  book: {
+    /** Signs are cut only under enemies whose ground point is within this distance of the hero's feet. */
+    reach: 230,
+    /** Seconds before it tries again when no enemy is within reach. */
+    retry: 0.5,
+    /** How bright a sign's light is when it is cut, as a share of its light just before it strikes. */
+    faint: 0.12,
+    /** Seconds the surge of light at the strike takes to die down. */
+    surge: 0.15,
+    /** Seconds the sign takes to fade out after it strikes. */
+    fade: 0.5,
+  },
+
+  /**
    * Levels: the experience the skull drinks in fills a level, and each
    * level asks for more than the last.
    */
@@ -244,6 +263,21 @@ export const CFG = {
       { ways: 1, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
       { ways: 2, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
       { ways: 2, damage: 30, reach: 130, arc: 140, cooldown: 1.0 },
+    ],
+    /**
+     * Every `cooldown` seconds cuts `count` signs into the ground, each under
+     * a different enemy picked at random among those within `book.reach` of
+     * the hero (fewer if there are fewer). A sign stays where it was cut and
+     * strikes `delay` seconds later, wounding every enemy within `radius` of
+     * it for `damage`; one that has walked off is missed. It never follows
+     * anyone.
+     */
+    book: [
+      { count: 1, damage: 15, radius: 45, cooldown: 4.0, delay: 0.9 },
+      { count: 2, damage: 15, radius: 45, cooldown: 4.0, delay: 0.9 },
+      { count: 2, damage: 25, radius: 55, cooldown: 4.0, delay: 0.9 },
+      { count: 3, damage: 25, radius: 55, cooldown: 4.0, delay: 0.9 },
+      { count: 4, damage: 25, radius: 55, cooldown: 3.0, delay: 0.9 },
     ],
     /** Sparks are drawn in from `pickupRadius` instead of `spark.pickupRadius`. */
     hagStone: [
@@ -379,3 +413,4 @@ export type StakeConfig = typeof CFG.stake;
 export type TeethConfig = typeof CFG.teeth;
 export type BellConfig = typeof CFG.bell;
 export type SickleConfig = typeof CFG.sickle;
+export type BookConfig = typeof CFG.book;

@@ -196,6 +196,23 @@ export const NIGHT = {
     cell: 4,
   },
 
+  /**
+   * Witch-light: light that the scene adds to the frame among the entities
+   * and that draws itself into the coals' mask (CoalMask) where it is seen,
+   * in a pale green, as the black book's signs do. The night darkens what
+   * lies under it but not the light itself, which shows as bright in the
+   * dark as in the hero's light, and is covered by whatever stands in
+   * front of it. The mask tells it from the coals by its colour.
+   */
+  witch: {
+    /**
+     * How much brighter a pixel of the mask must be in green than in red
+     * and in blue to be all witch-light (0..1); a pixel less green is taken
+     * as part witch-light, in proportion, and one no greener as none.
+     */
+    key: 0.04,
+  },
+
   grain: {
     /** Strength of the paper grain over the whole frame (0..1). */
     amount: 0.035,

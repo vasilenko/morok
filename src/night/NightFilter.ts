@@ -192,6 +192,7 @@ class FilterNight extends Phaser.Renderer.WebGL.RenderNodes.BaseFilterShader {
     set('uAuraFull', aura.full);
     set('uAuraFrom', aura.from);
     set('uAuraTo', aura.to);
+    set('uWitchKey', NIGHT.witch.key);
 
     set('uGrain', NIGHT.grain.amount);
     set('uGrainSize', NIGHT.grain.size);

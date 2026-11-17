@@ -91,6 +91,10 @@ uniform float uAuraLight;
 uniform float uAuraFull;
 uniform float uAuraFrom;
 uniform float uAuraTo;
+// Witch-light in the same mask is green above all: by uWitchKey more in its
+// green channel than in red or blue, it is all witch-light; the coals,
+// their sparks and wings never are.
+uniform float uWitchKey;
 
 uniform float uGrain;
 uniform float uGrainSize;
@@ -177,6 +181,18 @@ void main ()
     float edge = length(fromCentre) / length(0.5 * uResolution);
 
     vec3 source = texture2D(uMainSampler, outTexCoord).rgb;
+
+    // The lights' mask (see uCoals). Witch-light, told from the coals by
+    // being green above all, was added to the frame where it is seen: it is
+    // taken back out here, so the night darkens only what it was added to,
+    // and added again at the end in full.
+    vec2 onCoals = (pixel - uCoalOrigin) / uCoalSize;
+    vec3 coals = texture2D(uCoals, vec2(onCoals.x, 1.0 - onCoals.y)).rgb;
+    float witch = smoothstep(0.0, uWitchKey, coals.g - max(coals.r, coals.b));
+    vec3 witchLight = coals * witch;
+    source = max(source - witchLight, 0.0);
+    coals -= witchLight;
+
     float lum = luma(source);
     float peak = max(source.r, max(source.g, source.b));
 
@@ -214,8 +230,6 @@ void main ()
     // A coal's aura lights its own pixels, where the mask holds its light,
     // with any edge of a creature over it in proportion; among them, the
     // bright ones, not the dark soil its faint glow lies on.
-    vec2 onCoals = (pixel - uCoalOrigin) / uCoalSize;
-    vec3 coals = texture2D(uCoals, vec2(onCoals.x, 1.0 - onCoals.y)).rgb;
     float own = max(coals.r, max(coals.g, coals.b));
     float aura = uAuraLight * smoothstep(0.0, uAuraFull, own) * smoothstep(uAuraFrom, uAuraTo, peak);
 
@@ -258,6 +272,9 @@ void main ()
     float threshold = 1.0 - uFogCoverage;
     fog = smoothstep(threshold - uFogSoftness, threshold + uFogSoftness, fog);
     color = mix(color, uFogColor, uFogAlpha * dark * fog * (1.0 - heat));
+
+    // The witch-light, as bright in the dark as in the hero's light.
+    color += witchLight;
 
     // The fire in the skull's eye, laid over everything the night did, so
     // it burns on top of the hero in either facing: a small hot core in a

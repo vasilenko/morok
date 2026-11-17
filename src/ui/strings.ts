@@ -84,6 +84,17 @@ export const STRINGS = {
         cooldown: (_from, to) => `swung every ${to} s`,
       },
     },
+    book: {
+      name: 'Black book',
+      gain: 'Cuts a sign under one of the dead; a moment later it strikes',
+      gains: {
+        count: (_from, to) => `${to} signs at once`,
+        damage: woundsFor,
+        radius: (from, to) => (to > from ? 'strikes wider' : 'strikes narrower'),
+        cooldown: (_from, to) => `cut every ${to} s`,
+        delay: (from, to) => (to < from ? 'strikes sooner' : 'strikes later'),
+      },
+    },
     hagStone: {
       name: 'Hag stone',
       gain: 'Draws sparks in from further away',

@@ -41,7 +41,7 @@ describe('a new run', () => {
   it('starts at level 1 with only the stake, at level 1', () => {
     const progress = newProgress(ladders);
     expect(progress.level).toBe(1);
-    expect(progress.items).toEqual({ stake: 1, teeth: 0, bell: 0, sickle: 0, hagStone: 0 });
+    expect(progress.items).toEqual({ stake: 1, teeth: 0, bell: 0, sickle: 0, book: 0, hagStone: 0 });
   });
 });
 
@@ -76,6 +76,21 @@ describe('the cards offered', () => {
       for (const id of cards) seen.add(id);
     }
     expect(seen.size).toBe(5);
+  });
+
+  it('are three of the six items at random, each of them in time', () => {
+    const progress = newProgress(ladders);
+    progress.choices = 1;
+    const seen = new Map<string, number>();
+    for (let i = 0; i < 600; i++) {
+      const cards = offer(progress, ladders, levels, Math.random);
+      expect(cards).toHaveLength(3);
+      expect(new Set(cards).size).toBe(3);
+      for (const id of cards) seen.set(id, (seen.get(id) ?? 0) + 1);
+    }
+    expect(Object.keys(ladders)).toHaveLength(6);
+    // Each is offered about half the time.
+    for (const id of Object.keys(ladders)) expect(seen.get(id)).toBeGreaterThan(200);
   });
 
   it('lapse when nothing is left to raise, so levels keep counting without a choice', () => {
@@ -122,7 +137,7 @@ describe('a pick', () => {
       cards = offer(progress, ladders, levels, Math.random);
     }
     expect(picks).toBe(5 * Object.keys(ladders).length - 1);
-    expect(progress.items).toEqual({ stake: 5, teeth: 5, bell: 5, sickle: 5, hagStone: 5 });
+    expect(progress.items).toEqual({ stake: 5, teeth: 5, bell: 5, sickle: 5, book: 5, hagStone: 5 });
     expect(progress.choices).toBe(0);
   });
 });
@@ -165,6 +180,16 @@ describe('the numbers each level gives', () => {
       { ways: 1, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
       { ways: 2, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
       { ways: 2, damage: 30, reach: 130, arc: 140, cooldown: 1.0 },
+    ]);
+  });
+
+  it('are the black book ladder', () => {
+    expect([1, 2, 3, 4, 5].map((level) => itemStats(ladders, 'book', level))).toEqual([
+      { count: 1, damage: 15, radius: 45, cooldown: 4.0, delay: 0.9 },
+      { count: 2, damage: 15, radius: 45, cooldown: 4.0, delay: 0.9 },
+      { count: 2, damage: 25, radius: 55, cooldown: 4.0, delay: 0.9 },
+      { count: 3, damage: 25, radius: 55, cooldown: 4.0, delay: 0.9 },
+      { count: 4, damage: 25, radius: 55, cooldown: 3.0, delay: 0.9 },
     ]);
   });
 
@@ -225,6 +250,20 @@ describe('a card', () => {
       'Wounds for 15, reaps wider',
       'Also reaps the other way',
       'Wounds for 30, reaps further, swung every 1 s',
+    ]);
+  });
+
+  it('reads every level of the black book', () => {
+    expect(cardFor(newProgress(ladders), ladders, 'book')).toMatchObject({
+      name: 'Black book',
+      level: 1,
+      line: 'Cuts a sign under one of the dead; a moment later it strikes',
+    });
+    expect([2, 3, 4, 5].map((level) => gainLine(ladders, 'book', level))).toEqual([
+      '2 signs at once',
+      'Wounds for 25, strikes wider',
+      '3 signs at once',
+      '4 signs at once, cut every 3 s',
     ]);
   });
 
