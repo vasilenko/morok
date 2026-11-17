@@ -59,28 +59,99 @@ export const CFG = {
     xp: 5,
   },
 
+  /** The stake's flight; what grows with its level is in `items.stake`. */
   stake: {
-    cooldown: 0.45,
     speed: 640,
-    damage: 10,
-    /** How many enemies a single stake can hit. */
-    pierce: 3,
-    range: 430,
-    lifetime: 0.8,
     knockback: 160,
   },
 
+  /**
+   * Fangs that circle the hero on the ground and wound whatever they pass
+   * through; how many, how hard, how wide and how fast is in `items.teeth`.
+   */
+  teeth: {
+    /** Seconds an enemy wounded by the teeth is spared by every fang. */
+    rehit: 0.3,
+    /** A light push away from the hero. */
+    knockback: 90,
+    /** Reach of a fang's point on the ground, added to an enemy's radius. */
+    hitRadius: 6,
+    /** The circle as seen from above at three-quarters: its height is this share of its width. */
+    flatten: 0.75,
+    /** Height of the fangs above the ground: about the hero's middle. */
+    lift: 26,
+    /**
+     * How quickly the fangs settle into new places, per second: a fang that
+     * is gained grows out from the hero, the others spread to make room, and
+     * the circle widens, all easing in rather than jumping.
+     */
+    settle: 5,
+  },
+
+  /**
+   * Levels: the experience the skull drinks in fills a level, and each
+   * level asks for more than the last.
+   */
+  levels: {
+    /**
+     * Experience from level 1 to level 2: a few kills, so the first choice
+     * comes within the quiet opening, while the stake is all the hero has.
+     */
+    first: 45,
+    /** Added to the cost of every level after that. */
+    step: 90,
+    /** Most items offered at a level-up. */
+    choices: 3,
+  },
+
+  /**
+   * What every item does at each of its levels, from level 1: a row of
+   * numbers per level. The hero starts with the stake at level 1.
+   */
+  items: {
+    /**
+     * Thrown every `cooldown` seconds, whether or not anyone is there, the
+     * way the hero faces (exactly left or right, never tilted), and `ways`
+     * ways at once: 1 ahead, 2 ahead and behind, 4 adds straight up and
+     * down. Each stake flies straight for `range` and goes through `pierce`
+     * enemies; it never seeks one.
+     */
+    stake: [
+      { ways: 1, damage: 10, cooldown: 0.6, range: 120, pierce: 1 },
+      { ways: 1, damage: 10, cooldown: 0.6, range: 170, pierce: 2 },
+      { ways: 2, damage: 15, cooldown: 0.5, range: 170, pierce: 2 },
+      { ways: 2, damage: 15, cooldown: 0.5, range: 240, pierce: 3 },
+      { ways: 4, damage: 30, cooldown: 0.4, range: 240, pierce: 3 },
+    ],
+    /** `count` fangs, `radius` from the hero, one turn every `period` seconds. */
+    teeth: [
+      { count: 2, damage: 10, radius: 85, period: 1.6 },
+      { count: 3, damage: 10, radius: 85, period: 1.6 },
+      { count: 3, damage: 15, radius: 100, period: 1.6 },
+      { count: 4, damage: 15, radius: 100, period: 1.6 },
+      { count: 5, damage: 15, radius: 115, period: 1.6 },
+    ],
+    /** Sparks are drawn in from `pickupRadius` instead of `spark.pickupRadius`. */
+    hagStone: [
+      { pickupRadius: 85 },
+      { pickupRadius: 110 },
+      { pickupRadius: 140 },
+      { pickupRadius: 170 },
+      { pickupRadius: 210 },
+    ],
+  },
+
   spawn: {
-    /** Enemies per second at the start of the night. */
-    trickle: 1.4,
+    /** Enemies per second at the start of the night: dusk, with the dead coming one by one. */
+    trickle: 0.7,
     /** Added to the trickle for every minute survived. */
     trickleGrowth: 1.0,
-    /** Seconds before the first wave. */
-    firstWave: 3,
+    /** Seconds before the first wave: time to meet the first of them and take a first level. */
+    firstWave: 20,
     /** Seconds between waves. */
     waveEvery: 12,
     /** Size of the first wave. */
-    waveBase: 12,
+    waveBase: 6,
     /** Added to every following wave. */
     waveGrowth: 5,
     /** Every Nth wave surrounds the player instead of coming from one side. */
@@ -115,7 +186,7 @@ export const CFG = {
      * grade picked uniformly at random. Off restores the real rule.
      */
     randomGrade: true,
-    /** The hero draws in sparks within this distance of his position. */
+    /** The hero draws in sparks within this distance of his position, until the hag stone draws them from further. */
     pickupRadius: 60,
     /** Seconds after the drop before a spark can be drawn in, so every drop is seen. */
     pickupDelay: 0.25,
@@ -188,3 +259,6 @@ export const CFG = {
 export type SpawnConfig = typeof CFG.spawn;
 export type UpyrConfig = typeof CFG.upyr;
 export type SparkConfig = typeof CFG.spark;
+export type LevelConfig = typeof CFG.levels;
+export type ItemLadders = typeof CFG.items;
+export type TeethConfig = typeof CFG.teeth;

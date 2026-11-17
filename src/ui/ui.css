@@ -3,7 +3,6 @@
   --bone: #d9cfb4;
   --bone-dim: #8f8672;
   --ember: #e0a03a;
-  --blood: #b3262b;
   --navi: #a9c8d8;
 }
 
@@ -28,10 +27,10 @@ body {
 .hud {
   position: fixed;
   inset: 0 0 auto 0;
-  padding: 18px 24px;
+  padding: 22px 24px 18px;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
-  align-items: start;
+  align-items: baseline;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.4s;
@@ -52,24 +51,70 @@ body {
   color: var(--bone-dim);
 }
 
-.hp-bar {
-  width: min(240px, 30vw);
-  height: 10px;
-  margin-top: 6px;
-  background: #1a1512;
-  border: 1px solid #3a2f26;
-}
-
-.hp-bar i {
-  display: block;
-  height: 100%;
-  background: var(--blood);
-  transform-origin: left center;
-  transition: transform 0.15s;
-}
-
 .clock {
   text-align: center;
+}
+
+/*
+ * Experience towards the next level, along the very top edge. The fill is a
+ * full-width strip slid in from the left, so its bright leading edge keeps
+ * its width wherever the fill ends.
+ */
+.xp-bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 10px;
+  overflow: hidden;
+  background: #120f0c;
+  border-bottom: 1px solid rgba(217, 207, 180, 0.32);
+}
+
+.xp-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--ember);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease-out;
+}
+
+.xp-fill.snap {
+  transition: none;
+}
+
+.xp-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 3px;
+  background: #ffe3a8;
+}
+
+/* Flares briefly over the fill when experience arrives. */
+.xp-fill i {
+  position: absolute;
+  inset: 0;
+  background: #f7cf7e;
+  opacity: 0;
+}
+
+/* The level, hung just under the bar's left end. */
+.level {
+  justify-self: start;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bone);
+}
+
+.level span {
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ember);
 }
 
 #timer {
@@ -79,15 +124,45 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* The dead laid to rest: a quiet figure behind a skull. */
 .kills {
-  text-align: right;
+  justify-self: end;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/*
+ * The skull stands on the count's baseline like a letter, then is nudged
+ * down, outside the layout, so its middle meets the middle of the digits
+ * and the baseline shared across the strip does not move.
+ */
+#killsIcon {
+  position: relative;
+  top: 5px;
+  width: auto;
+  height: 22px;
 }
 
 #kills {
-  font-size: 26px;
+  font-size: 16px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--navi);
+}
+
+@media (max-width: 640px) {
+  .hud {
+    padding: 18px 16px 14px;
+  }
+
+  .xp-bar {
+    height: 8px;
+  }
+
+  #timer {
+    font-size: 32px;
+  }
 }
 
 /* ── Title, pause and death screens ─────────────────────────────────────── */
@@ -149,6 +224,151 @@ body {
   animation: pulse 1.8s ease-in-out infinite;
 }
 
+/* ── Level-up cards ─────────────────────────────────────────────────────── */
+
+.screen.choice {
+  cursor: default;
+  gap: 28px;
+}
+
+.cards {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.card {
+  position: relative;
+  width: 200px;
+  min-width: 0;
+  padding: 22px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  color: var(--bone);
+  text-align: center;
+  background: rgba(11, 10, 9, 0.78);
+  border: 1px solid #3a2f26;
+  border-radius: 0;
+  cursor: pointer;
+  opacity: 0;
+  animation: card-in 0.3s ease-out forwards;
+  animation-delay: calc(var(--i) * 40ms);
+  transition: transform 0.15s ease-out;
+}
+
+.card:hover {
+  border-color: var(--bone-dim);
+  transform: translateY(-3px);
+}
+
+.card:focus {
+  outline: none;
+}
+
+.card img {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 8px;
+  object-fit: contain;
+}
+
+.card .key {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 12px;
+  color: var(--bone-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.card .name {
+  font-size: 20px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.card .rank {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bone-dim);
+}
+
+.card .rank.new {
+  color: var(--ember);
+}
+
+.card .line {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Rises with `translate`, so the hover's `transform` still applies once it is in. */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}
+
+/* Narrow screens: the cards stack, each a row with its picture on the left. */
+@media (max-width: 640px) {
+  .screen.choice {
+    gap: 20px;
+  }
+
+  .cards {
+    flex-direction: column;
+    width: min(100%, 360px);
+    gap: 10px;
+  }
+
+  .card {
+    width: auto;
+    padding: 12px 14px 12px 12px;
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    column-gap: 14px;
+    row-gap: 2px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .card img {
+    grid-row: 1 / span 3;
+    width: 56px;
+    height: 56px;
+    margin: 0;
+  }
+
+  .card .key {
+    top: 6px;
+    left: auto;
+    right: 10px;
+  }
+
+  .card .line {
+    margin-top: 2px;
+    font-size: 14px;
+  }
+}
+
+/* A picture to touch, not keys to press. */
+@media (hover: none) {
+  .card .key {
+    display: none;
+  }
+}
+
 @keyframes pulse {
   50% {
     opacity: 0.45;
@@ -158,5 +378,19 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .screen .cta {
     animation-duration: 0.01s;
+  }
+
+  .card {
+    animation-name: fade-in;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  to {
+    opacity: 1;
   }
 }

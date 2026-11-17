@@ -17,6 +17,8 @@
  * an atlas instead, each trimmed on its own with its ground point as pivot.
  *
  * The ground tile is resized on its own, keeping its seams; see GROUND.
+ * The items' pictures and the kill count's icon for the interface are plain
+ * images; see ITEM_PICTURES and KILLS_ICON.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -129,6 +131,47 @@ const UPYR = {
     // The smallest pose is some 68000 pixels; the rows are 460 apart.
     split: { minArea: 20000, minSpeck: 4, rowGap: 200 },
   },
+};
+
+/** How the sheets drawn like the upyr's are cut: figures on a plain white backdrop. */
+const PLAIN_SHEET = UPYR.cut;
+
+/**
+ * The wolf teeth that circle the hero: four fangs in a row, each lying with
+ * its tip pointing right. They are packed into an atlas, trimmed each on
+ * its own and scaled alike, so the longest is `width` world units across;
+ * the game turns each about its middle.
+ */
+const WOLF_TEETH = {
+  source: 'wolf-teeth.png',
+  output: 'wolf-teeth',
+  frames: ['fang-1', 'fang-2', 'fang-3', 'fang-4'],
+  width: 18,
+  cut: PLAIN_SHEET,
+};
+
+/**
+ * The pictures of the items on the level-up cards, which are DOM images,
+ * not textures: one file each, fitted into a square of `size` pixels,
+ * which is the card's picture at twice its CSS size, for sharp displays.
+ */
+const ITEM_PICTURES = {
+  source: 'items.png',
+  outputs: ['item-stake.png', 'item-teeth.png', 'item-hag-stone.png'],
+  size: 144,
+  cut: PLAIN_SHEET,
+};
+
+/**
+ * The skull beside the kill count, also a DOM image: the first of the three
+ * emblems on its sheet, the others not shipped. 56 pixels holds the icon at
+ * twice its CSS size, with room to grow it a little.
+ */
+const KILLS_ICON = {
+  source: 'emblems.png',
+  outputs: ['icon-skull.png', null, null],
+  size: 56,
+  cut: PLAIN_SHEET,
 };
 
 /**
@@ -464,6 +507,64 @@ async function buildPoseAtlas({ source, output, frames, sizedBy, height, cut }) 
   await writeAtlas(source, output, props);
 }
 
+/**
+ * Cuts the figures out of a sheet, trims each on its own and packs them
+ * into an atlas, all at one scale, set by the widest figure.
+ */
+async function buildFigureAtlas({ source, output, frames, width, cut }) {
+  const figures = await cutFigures(source, cut, frames.length);
+  const widest = Math.max(...figures.map((f) => f.bounds.width));
+  const scale = (width * ART_SCALE) / widest;
+  const props = [];
+  for (const [i, figure] of figures.entries()) {
+    const size = { width: Math.round(figure.bounds.width * scale), height: Math.round(figure.bounds.height * scale) };
+    props.push({ name: frames[i], data: await resizeFigure(figure, size), ...size });
+  }
+  await writeAtlas(source, output, props);
+}
+
+/**
+ * Cuts the figures out of a sheet and writes each as its own file, fitted
+ * into a square of `size` pixels. `outputs` names a file for every figure
+ * in reading order; a figure whose name is null is not shipped.
+ */
+async function buildPictures({ source, outputs, size, cut }) {
+  const figures = await cutFigures(source, cut, outputs.length);
+  for (const [i, figure] of figures.entries()) {
+    if (!outputs[i]) continue;
+    const fit = size / Math.max(figure.bounds.width, figure.bounds.height);
+    const scaled = {
+      width: Math.round(figure.bounds.width * fit),
+      height: Math.round(figure.bounds.height * fit),
+    };
+    const file = join(outputDir, outputs[i]);
+    const result = await sharp(await resizeFigure(figure, scaled), { raw: { ...scaled, channels: 4 } })
+      .png(PNG_OPTIONS)
+      .toFile(file);
+    console.log(`${source} -> src/art/sprites/${outputs[i]} ${result.width}x${result.height}`);
+  }
+}
+
+/** Every figure of a sheet as a raw RGBA image of its own, with the bounds of its opaque pixels. */
+async function cutFigures(source, cut, count) {
+  const { rgba, labels, figures, info } = await cutSheet(source, cut, count);
+  return figures.map((figure) => {
+    const canvas = { width: figure.right - figure.left, height: figure.bottom - figure.top };
+    const corner = { x: figure.left, y: figure.top };
+    const image = isolateFigure(rgba, labels, info.width, figure, corner, canvas, { x: 0, y: 0 });
+    return { image, canvas, bounds: opaqueBounds(image, canvas.width, canvas.height) };
+  });
+}
+
+/** A figure trimmed to its opaque bounds and resized to `size`, as raw RGBA. */
+function resizeFigure({ image, canvas, bounds }, size) {
+  return sharp(image, { raw: { ...canvas, channels: 4 } })
+    .extract(bounds)
+    .resize({ ...size, fit: 'fill', kernel: sharp.kernel.lanczos3 })
+    .raw()
+    .toBuffer();
+}
+
 function round4(value) {
   return Math.round(value * 10000) / 10000;
 }
@@ -555,3 +656,6 @@ for (const sprite of SPRITES) await buildSprite(sprite);
 await buildGround(GROUND);
 await buildScenery(SCENERY);
 await buildPoseAtlas(UPYR);
+await buildFigureAtlas(WOLF_TEETH);
+await buildPictures(ITEM_PICTURES);
+await buildPictures(KILLS_ICON);

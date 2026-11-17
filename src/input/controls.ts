@@ -12,6 +12,16 @@ const MOVE_KEYS: Record<string, Direction> = {
   ArrowRight: 'right',
 };
 
+/** The keys that pick a card on the level-up screen, by the card's index. */
+const CHOICE_KEYS: Record<string, number> = {
+  Digit1: 0,
+  Digit2: 1,
+  Digit3: 2,
+  Numpad1: 0,
+  Numpad2: 1,
+  Numpad3: 2,
+};
+
 /**
  * Keyboard state shared by the whole game. Lives outside Phaser's scene input
  * so that it keeps working while a scene is paused.
@@ -21,6 +31,8 @@ class Controls {
   onAdvance: () => void = () => {};
   /** Escape or P. */
   onPause: () => void = () => {};
+  /** 1, 2 or 3: pick the card of that index. */
+  onChoose: (index: number) => void = () => {};
   /** The window lost focus. */
   onBlur: () => void = () => {};
 
@@ -39,6 +51,8 @@ class Controls {
         this.onAdvance();
       } else if (event.code === 'Escape' || event.code === 'KeyP') {
         this.onPause();
+      } else if (event.code in CHOICE_KEYS) {
+        this.onChoose(CHOICE_KEYS[event.code]);
       }
     });
 

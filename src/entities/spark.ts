@@ -109,15 +109,26 @@ export function dropSpark(
 
 /**
  * Advances the spark by `dt` seconds. `hero` is the hero's position, which
- * decides when it is pulled; `eye` is the skull's eye socket it flies to.
- * Returns the worth to credit: the spark's worth on the step it is absorbed,
- * 0 on every other step, so it is credited exactly once.
+ * decides when it is pulled: once he is within `reach` of it, which is
+ * `cfg.pickupRadius` unless something draws sparks from further. The flight
+ * keeps its pace by `cfg.pickupRadius` whatever the reach, so one drawn
+ * from further flies faster and takes about as long. `eye` is the skull's
+ * eye socket it flies to. Returns the worth to credit: the spark's worth on
+ * the step it is absorbed, 0 on every other step, so it is credited exactly
+ * once.
  */
-export function stepSpark(spark: Spark, hero: Point, eye: Point, dt: number, cfg: SparkConfig): number {
+export function stepSpark(
+  spark: Spark,
+  hero: Point,
+  eye: Point,
+  dt: number,
+  cfg: SparkConfig,
+  reach = cfg.pickupRadius,
+): number {
   if (spark.state === 'absorbed') return 0;
   spark.age += dt;
   if (spark.state === 'settling') settle(spark, cfg);
-  if (spark.state !== 'pulled' && canBePulled(spark, hero, cfg)) startPull(spark, hero, eye, cfg);
+  if (spark.state !== 'pulled' && canBePulled(spark, hero, reach, cfg)) startPull(spark, hero, eye, cfg);
   if (spark.state === 'pulled') return fly(spark, hero, eye, dt, cfg);
   return 0;
 }
@@ -184,11 +195,11 @@ function settle(spark: Spark, cfg: SparkConfig): void {
   }
 }
 
-function canBePulled(spark: Spark, hero: Point, cfg: SparkConfig): boolean {
+function canBePulled(spark: Spark, hero: Point, reach: number, cfg: SparkConfig): boolean {
   if (spark.age < cfg.pickupDelay) return false;
   const dx = hero.x - spark.x;
   const dy = hero.y - spark.y;
-  return dx * dx + dy * dy <= cfg.pickupRadius * cfg.pickupRadius;
+  return dx * dx + dy * dy <= reach * reach;
 }
 
 /**

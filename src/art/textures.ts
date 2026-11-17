@@ -9,6 +9,8 @@ import upyrAtlas from './sprites/upyr.json';
 import upyrUrl from './sprites/upyr.png';
 import volhvSheet from './sprites/volhv-walk.json';
 import volhvUrl from './sprites/volhv-walk.png';
+import teethAtlas from './sprites/wolf-teeth.json';
+import teethUrl from './sprites/wolf-teeth.png';
 import { COAL, coalLight, GRADE_COLORS, WING, wingCover } from './coals';
 import { ART_SCALE, GROUND_ART_SCALE } from './scale';
 
@@ -35,7 +37,11 @@ export const TEX = {
   coal: 'coal',
   ground: 'ground',
   scenery: 'scenery',
+  teeth: 'teeth',
 } as const;
+
+/** The four drawings of a fang in the wolf teeth's atlas, each lying with its tip to the right. */
+export const FANG_FRAMES = Object.keys(teethAtlas.frames);
 
 export const ANIM = {
   naviaFly: 'navia-fly',
@@ -233,6 +239,7 @@ export function loadSprites(load: Phaser.Loader.LoaderPlugin): void {
   load.image(TEX.stake, stakeUrl);
   load.image(TEX.ground, groundUrl);
   load.atlas(TEX.scenery, sceneryUrl, sceneryAtlas);
+  load.atlas(TEX.teeth, teethUrl, teethAtlas);
 }
 
 /** Animations are global, so they are created once at boot for every scene. */

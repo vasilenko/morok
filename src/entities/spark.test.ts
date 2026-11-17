@@ -159,16 +159,17 @@ interface Flight {
 /**
  * Flies a spark that lies just inside the pickup radius from the hero
  * towards `angle` (radians), drawn in as he starts on `motion` facing
- * `facing`, for at most three seconds.
+ * `facing`, for at most three seconds. `reach` is how far sparks are
+ * drawn in from.
  */
-function fly(motion: Motion, angle: number, curl: number, phase: number, facing = 1): Flight {
-  const distance = cfg.pickupRadius - 1;
+function fly(motion: Motion, angle: number, curl: number, phase: number, facing = 1, reach = cfg.pickupRadius): Flight {
+  const distance = reach - 1;
   const hero = { x: 0, y: 0 };
   let bob = 0;
   const eye = () => ({ x: hero.x + facing * SKULL.x, y: hero.y + SKULL.y + bob });
   const lying = dropSpark(Math.cos(angle) * distance, Math.sin(angle) * distance, 18, 3, 0, curl, phase, cfg);
   const spark: Spark = { ...lying, state: 'lying', age: 1, lift: 0 };
-  let credited = stepSpark(spark, hero, eye(), 0, cfg);
+  let credited = stepSpark(spark, hero, eye(), 0, cfg, reach);
   expect(spark.state).toBe('pulled');
   const path: Point[] = [];
   const gaps: number[] = [];
@@ -187,7 +188,7 @@ function fly(motion: Motion, angle: number, curl: number, phase: number, facing 
       lastTurn = step;
     }
     bob = length > 0 && Math.floor(step / BOB.steps) % 2 ? BOB.height : 0;
-    credited += stepSpark(spark, hero, eye(), STEP, cfg);
+    credited += stepSpark(spark, hero, eye(), STEP, cfg, reach);
     step++;
     path.push({ x: spark.x, y: spark.y });
     eyes.push(eye());
@@ -381,4 +382,31 @@ describe('the worth of a dropped spark', () => {
     const rolls = [0, 0.24, 0.25, 0.49, 0.5, 0.74, 0.75, 0.999, 1];
     expect(rolls.map((roll) => dropWorth(true, 5, roll, cfg.grades))).toEqual([1, 1, 5, 5, 15, 15, 40, 40, 40]);
   });
+});
+
+describe('a spark drawn in from further', () => {
+  it('lies still while the hero is outside that reach, and is pulled once he is inside it', () => {
+    const spark = lyingSpark(0, 0);
+    stepSpark(spark, { x: spark.x + 100, y: 0 }, { x: spark.x + 124, y: -21 }, STEP, cfg, 99);
+    expect(spark.state).toBe('lying');
+    stepSpark(spark, { x: spark.x + 98, y: 0 }, { x: spark.x + 122, y: -21 }, STEP, cfg, 99);
+    expect(spark.state).toBe('pulled');
+  });
+
+  for (const reach of [85, 110, 140, 170, 210]) {
+    describe(`from ${reach}`, () => {
+      for (const [name, motion] of Object.entries(motions)) {
+        // A little longer than from the bare radius, as it must brake from
+        // a higher speed: from 210, 0.9 s rather than 0.7 standing.
+        it(`with the hero ${name} is drunk in, taking about as long as from the bare radius`, () => {
+          for (const [angle, curl, phase] of starts) {
+            const flight = fly(motion, angle, curl, phase, 1, reach);
+            expect(flight.credited).toBe(3);
+            if (name === 'standing') expect(flight.time).toBeGreaterThan(0.6);
+            expect(flight.time).toBeLessThan(name === 'standing' ? 1 : 1.2);
+          }
+        });
+      }
+    });
+  }
 });

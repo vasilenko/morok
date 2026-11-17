@@ -12,14 +12,27 @@ import type { Enemy } from '../entities/enemy';
 import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
 import { addNight, type NightFilter } from '../night/NightFilter';
+import { cardFor } from '../progression/cards';
+import {
+  gainXp,
+  itemStats,
+  levelCost,
+  newProgress,
+  offer,
+  pick,
+  type ItemId,
+  type Progress,
+} from '../progression/progression';
 import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
+import { WolfTeeth } from '../weapons/WolfTeeth';
 import { Ground } from '../world/Ground';
 import { Scenery } from '../world/Scenery';
 import { randomScenerySeed } from '../world/SceneryLayout';
 
-type Mode = 'title' | 'run' | 'pause' | 'dead';
+/** `choose`: the run stands still while the player picks what a level-up gives. */
+type Mode = 'title' | 'run' | 'pause' | 'choose' | 'dead';
 
 const BEST_TIME_KEY = 'morok.best';
 /** Registry flag: skip the title screen on the next scene start. */
@@ -53,6 +66,7 @@ export class GameScene extends Phaser.Scene {
   private scenery!: Scenery;
   private fx!: Fx;
   private stake!: AspenStake;
+  private teeth!: WolfTeeth;
   private director!: WaveDirector;
   /** The layers that can stand in front of a coal or light it, for the night's mask of the coals. */
   private layers!: Record<'entities' | 'lights' | 'overhead', Phaser.GameObjects.Layer>;
@@ -68,6 +82,10 @@ export class GameScene extends Phaser.Scene {
   private kills = 0;
   /** Experience gathered in this run: the worth of every spark the skull has drunk in. */
   private xp = 0;
+  /** The hero's level and items. */
+  private progress!: Progress;
+  /** The items on the cards shown, in order. */
+  private offered: ItemId[] = [];
 
   constructor() {
     super('Game');
@@ -90,6 +108,8 @@ export class GameScene extends Phaser.Scene {
     this.clock = 0;
     this.kills = 0;
     this.xp = 0;
+    this.progress = newProgress(CFG.items);
+    this.offered = [];
 
     this.ground = new Ground(this, tiles);
     // A new layout of the scenery for every run.
@@ -99,6 +119,8 @@ export class GameScene extends Phaser.Scene {
     this.sparks = new Sparks(this, entities, lights);
     this.fx = new Fx(this, overhead);
     this.stake = new AspenStake(this, overhead, this.horde, this.fx);
+    this.teeth = new WolfTeeth(this, entities, this.horde, this.fx);
+    this.equip();
     this.director = new WaveDirector(CFG.spawn);
     // Light, fog and the hurt flash, over everything the camera sees.
     this.night = addNight(this.cameras.main);
@@ -106,6 +128,10 @@ export class GameScene extends Phaser.Scene {
 
     controls.onAdvance = () => this.advance();
     controls.onPause = () => this.togglePause();
+    controls.onChoose = (index) => {
+      if (this.mode === 'choose') ui.pickCard(index);
+    };
+    ui.onPick = (index) => this.choose(index);
     controls.onBlur = () => {
       if (this.mode === 'run') this.togglePause();
     };
@@ -139,7 +165,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Snapshot for the HUD and for debugging. */
-  get stats(): RunStats & { mode: Mode; wave: number; enemies: number; xp: number; sparks: number } {
+  get stats(): RunStats & {
+    mode: Mode;
+    wave: number;
+    hp: number;
+    maxHp: number;
+    enemies: number;
+    xp: number;
+    sparks: number;
+    items: Record<ItemId, number>;
+  } {
+    const progress = this.progress;
     return {
       mode: this.mode,
       elapsed: this.elapsed,
@@ -150,6 +186,10 @@ export class GameScene extends Phaser.Scene {
       enemies: this.horde.size,
       xp: this.xp,
       sparks: this.sparks.size,
+      level: progress.level,
+      levelXp: progress.xp,
+      levelCost: levelCost(progress.level, CFG.levels),
+      items: { ...progress.items },
     };
   }
 
@@ -168,16 +208,63 @@ export class GameScene extends Phaser.Scene {
     });
 
     const contact = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7, this.strike);
-    this.kills += this.stake.update(dt, player);
+    this.kills += this.stake.update(dt, player, player.facing);
+    this.kills += this.teeth.update(dt, player.x, player.feetY);
     this.horde.removeDead(this.dropSpark);
-    const drunk = this.sparks.update(dt, this.clock, player, player.skullEye);
+    const drunk = this.sparks.update(dt, this.clock, player, player.skullEye, this.pickupRadius);
     if (drunk > 0) {
       this.xp += drunk;
+      gainXp(this.progress, drunk, CFG.levels);
       this.night.feed(drunk);
     }
 
     if (contact > 0 && player.hurt(contact)) this.onPlayerHurt();
     ui.update(this.stats);
+    if (this.mode === 'run') this.offerChoice();
+  }
+
+  /** How far the hero draws in sparks from: further with the hag stone. */
+  private get pickupRadius(): number {
+    return itemStats(CFG.items, 'hagStone', this.progress.items.hagStone)?.pickupRadius ?? CFG.spark.pickupRadius;
+  }
+
+  /** Gives the weapons the numbers of their items' levels. */
+  private equip(): void {
+    this.stake.setLevel(this.progress.items.stake);
+    this.teeth.setLevel(this.progress.items.teeth);
+  }
+
+  /**
+   * Shows the cards for the next level-up waiting for its choice, standing
+   * the run still, if there is one; with every item at its top level there
+   * is none, and the run goes on. Returns whether cards are shown.
+   */
+  private offerChoice(): boolean {
+    this.offered = offer(this.progress, CFG.items, CFG.levels, Math.random);
+    if (this.offered.length === 0) return false;
+    if (this.mode !== 'choose') {
+      this.mode = 'choose';
+      this.scene.pause();
+    }
+    ui.showChoice(this.offered.map((id) => cardFor(this.progress, CFG.items, id)));
+    return true;
+  }
+
+  /**
+   * The player picked the card of `index`: the item is gained or raised,
+   * then the next level-up's cards follow if another is waiting, or the run
+   * goes on.
+   */
+  private choose(index: number): void {
+    const id = this.offered[index];
+    if (this.mode !== 'choose' || !id) return;
+    pick(this.progress, CFG.items, id);
+    this.equip();
+    ui.update(this.stats);
+    if (this.offerChoice()) return;
+    this.mode = 'run';
+    ui.showRun();
+    this.scene.resume();
   }
 
   /** A slain enemy leaves a spark where it fell. */

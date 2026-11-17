@@ -4,13 +4,16 @@ import { CFG } from '../config';
 import type { Enemy } from '../entities/enemy';
 import type { Horde } from '../entities/Horde';
 import type { Fx } from '../fx/Fx';
+import { itemStats } from '../progression/progression';
+import { throwAngles } from './stake';
 
 interface Stake {
   x: number;
   y: number;
   dx: number;
   dy: number;
-  life: number;
+  /** Distance it still flies before it falls. */
+  left: number;
   pierce: number;
   hit: Set<Enemy>;
   sprite: Phaser.GameObjects.Image;
@@ -26,11 +29,16 @@ const HIT_RADIUS = 5;
  */
 const GRIP = { x: 0.2, y: 0.49 };
 
+type StakeStats = (typeof CFG.items.stake)[number];
+
 /**
- * The starting weapon: fires on its own at the nearest enemy and pierces
- * through a few of them.
+ * The starting weapon: thrown on its own, on its cooldown, the way the hero
+ * faces, exactly left or right with no homing and no tilt; it pierces
+ * through a few enemies in its path. How many ways, how hard, how often, how far and through how
+ * many grows with its level (CFG.items.stake).
  */
 export class AspenStake {
+  private stats: StakeStats = CFG.items.stake[0];
   private cooldown = 0.4;
   private flying: Stake[] = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
@@ -42,17 +50,21 @@ export class AspenStake {
     private readonly fx: Fx,
   ) {}
 
-  /** Fires when ready and advances stakes in flight. Returns the number of kills. */
-  update(dt: number, origin: { x: number; y: number }): number {
+  /** Takes on the numbers of `level`, from 1. */
+  setLevel(level: number): void {
+    this.stats = itemStats(CFG.items, 'stake', level) ?? CFG.items.stake[0];
+  }
+
+  /**
+   * Throws when ready from `origin` the way of `facing` (1 right, -1 left)
+   * and advances stakes in flight. Returns the number of kills.
+   */
+  update(dt: number, origin: { x: number; y: number }, facing: number): number {
     this.cooldown -= dt;
     if (this.cooldown <= 0) {
-      const target = this.nearest(origin);
-      if (target) {
-        this.fire(origin, target);
-        this.cooldown = CFG.stake.cooldown;
-      } else {
-        this.cooldown = 0;
-      }
+      for (const angle of throwAngles(facing, this.stats.ways)) this.fire(origin, angle);
+      // Added rather than set, so the throws keep their time on average whatever the frame rate.
+      this.cooldown = Math.max(0, this.cooldown + this.stats.cooldown);
     }
 
     let kills = 0;
@@ -60,7 +72,7 @@ export class AspenStake {
 
     let kept = 0;
     for (const stake of this.flying) {
-      if (stake.life > 0 && stake.pierce > 0) {
+      if (stake.left > 0 && stake.pierce > 0) {
         this.flying[kept++] = stake;
       } else {
         this.pool.push(stake.sprite.setVisible(false));
@@ -70,23 +82,7 @@ export class AspenStake {
     return kills;
   }
 
-  private nearest(origin: { x: number; y: number }): Enemy | null {
-    let best: Enemy | null = null;
-    let bestD2 = CFG.stake.range * CFG.stake.range;
-    for (const enemy of this.horde.list) {
-      const dx = enemy.x - origin.x;
-      const dy = enemy.y - origin.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = enemy;
-      }
-    }
-    return best;
-  }
-
-  private fire(origin: { x: number; y: number }, target: Enemy): void {
-    const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
+  private fire(origin: { x: number; y: number }, angle: number): void {
     const sprite = this.pool.pop()?.setVisible(true) ?? this.addSprite();
     sprite.setPosition(origin.x, origin.y).setRotation(angle);
     this.flying.push({
@@ -94,8 +90,8 @@ export class AspenStake {
       y: origin.y,
       dx: Math.cos(angle),
       dy: Math.sin(angle),
-      life: CFG.stake.lifetime,
-      pierce: CFG.stake.pierce,
+      left: this.stats.range,
+      pierce: this.stats.pierce,
       hit: new Set(),
       sprite,
     });
@@ -103,7 +99,7 @@ export class AspenStake {
 
   private advance(stake: Stake, dt: number): number {
     const cfg = CFG.stake;
-    const travel = cfg.speed * dt;
+    const travel = Math.min(cfg.speed * dt, stake.left);
     const steps = Math.max(1, Math.ceil(travel / MAX_STEP));
     const step = travel / steps;
     let kills = 0;
@@ -121,7 +117,7 @@ export class AspenStake {
         stake.hit.add(enemy);
         stake.pierce--;
         this.fx.splinters(stake.x, stake.y);
-        if (this.horde.damage(enemy, cfg.damage, stake.dx * cfg.knockback, stake.dy * cfg.knockback)) {
+        if (this.horde.damage(enemy, this.stats.damage, stake.dx * cfg.knockback, stake.dy * cfg.knockback)) {
           kills++;
           this.fx.wisps(enemy.x, enemy.y);
         }
@@ -129,7 +125,7 @@ export class AspenStake {
       });
     }
 
-    stake.life -= dt;
+    stake.left -= travel;
     stake.sprite.setPosition(stake.x, stake.y);
     return kills;
   }

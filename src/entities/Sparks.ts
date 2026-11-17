@@ -206,10 +206,10 @@ export class Sparks {
   }
 
   /**
-   * Moves every spark: those near the hero fly to the skull's `eye`. Returns
-   * the worth absorbed this step.
+   * Moves every spark: those within `reach` of the hero fly to the skull's
+   * `eye`. Returns the worth absorbed this step.
    */
-  update(dt: number, clock: number, hero: Point, eye: Point): number {
+  update(dt: number, clock: number, hero: Point, eye: Point, reach = CFG.spark.pickupRadius): number {
     const cfg = CFG.spark;
     this.clock = clock;
     let absorbed = 0;
@@ -219,7 +219,7 @@ export class Sparks {
     for (const spark of this.field) {
       const wasOnGround = onGround(spark);
       const [x, y] = [spark.x, spark.y];
-      absorbed += stepSpark(spark, hero, eye, dt, cfg);
+      absorbed += stepSpark(spark, hero, eye, dt, cfg, reach);
       // Drawn in: its heat stays behind on the ground and dies away.
       if (wasOnGround && spark.state === 'pulled') this.leaveAfterglow({ ...spark, x, y });
       this.place(spark, clock);
