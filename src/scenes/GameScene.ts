@@ -27,6 +27,7 @@ import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
 import { FuneralBell } from '../weapons/FuneralBell';
+import { Sickles } from '../weapons/Sickles';
 import { WolfTeeth } from '../weapons/WolfTeeth';
 import { Ground } from '../world/Ground';
 import { Scenery } from '../world/Scenery';
@@ -69,6 +70,7 @@ export class GameScene extends Phaser.Scene {
   private stake!: AspenStake;
   private teeth!: WolfTeeth;
   private bell!: FuneralBell;
+  private sickles!: Sickles;
   private director!: WaveDirector;
   /** The layers that can stand in front of a coal or light it, for the night's mask of the coals. */
   private layers!: Record<'entities' | 'lights' | 'overhead', Phaser.GameObjects.Layer>;
@@ -125,6 +127,7 @@ export class GameScene extends Phaser.Scene {
     this.stake = new AspenStake(this, overhead, this.horde, this.fx);
     this.teeth = new WolfTeeth(this, entities, this.horde, this.fx);
     this.bell = new FuneralBell(this, marks, overhead, this.horde, this.fx);
+    this.sickles = new Sickles(this, entities, this.horde, this.fx);
     this.equip();
     this.director = new WaveDirector(CFG.spawn);
     // Light, fog and the hurt flash, over everything the camera sees.
@@ -216,6 +219,7 @@ export class GameScene extends Phaser.Scene {
     this.kills += this.stake.update(dt, player, player.facing);
     this.kills += this.teeth.update(dt, player.x, player.feetY);
     this.kills += this.bell.update(dt, player.x, player.feetY);
+    this.kills += this.sickles.update(dt, player.x, player.feetY, player.facingY);
     this.horde.removeDead(this.dropSpark);
     const drunk = this.sparks.update(dt, this.clock, player, player.skullEye, this.pickupRadius);
     if (drunk > 0) {
@@ -239,6 +243,7 @@ export class GameScene extends Phaser.Scene {
     this.stake.setLevel(this.progress.items.stake);
     this.teeth.setLevel(this.progress.items.teeth);
     this.bell.setLevel(this.progress.items.bell);
+    this.sickles.setLevel(this.progress.items.sickle);
   }
 
   /**
@@ -273,6 +278,10 @@ export class GameScene extends Phaser.Scene {
     ui.showRun();
     this.scene.resume();
   }
+
+  /** Whether `object` gives its own light, which the night keeps in its colour: a coal or a sickle's trail. */
+  private readonly glows = (object: Phaser.GameObjects.GameObject): boolean =>
+    this.sparks.glows(object) || this.sickles.glows(object);
 
   /** A slain enemy leaves a spark where it fell. */
   private readonly dropSpark = (enemy: Enemy): void => {
@@ -361,10 +370,11 @@ export class GameScene extends Phaser.Scene {
     this.ground.cover(left, top, width + margin * 2, height + margin * 2);
     this.scenery.cover(left, top, width + margin * 2, height + margin * 2);
     // The fires' heat over the view, for the night to thin its fog by, and
-    // the coals' light as seen, for it to keep in their colour.
+    // the coals' light and the sickle's trail as seen, for it to keep in
+    // their colour.
     this.night.fires.draw(this.player.x, this.player.y, width, height, (stamp) => this.sparks.fires(stamp));
     const { entities, lights, overhead } = this.layers;
-    this.night.coals.draw(camera, entities, this.sparks.glows, lights, overhead);
+    this.night.coals.draw(camera, entities, this.glows, lights, overhead);
     if (import.meta.env.DEV) {
       this.footprintDebug?.draw(
         () => this.scenery.footprints(left, top, width + margin * 2, height + margin * 2),

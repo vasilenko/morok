@@ -73,6 +73,17 @@ export const STRINGS = {
         cooldown: (_from, to) => `tolls every ${to} s`,
       },
     },
+    sickle: {
+      name: 'Sickle',
+      gain: 'Reaps before you, up or down the way you walk',
+      gains: {
+        ways: (_from, to) => (to === 2 ? 'also reaps the other way' : 'reaps one way only'),
+        damage: woundsFor,
+        reach: (from, to) => (to > from ? 'reaps further' : 'reaps closer'),
+        arc: (from, to) => (to > from ? 'reaps wider' : 'reaps narrower'),
+        cooldown: (_from, to) => `swung every ${to} s`,
+      },
+    },
     hagStone: {
       name: 'Hag stone',
       gain: 'Draws sparks in from further away',

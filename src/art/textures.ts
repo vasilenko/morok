@@ -42,6 +42,7 @@ export const TEX = {
   teeth: 'teeth',
   relics: 'relics',
   ring: 'ring',
+  trail: 'trail',
 } as const;
 
 /** The frames of the relics' atlas: the funeral bell and the sickle, as seen in the world. */
@@ -283,6 +284,34 @@ function createRing(textures: Phaser.Textures.TextureManager): void {
   shares.forEach((_, frame) => texture.add(frame, 0, (frame % columns) * size, Math.floor(frame / columns) * size, size, size));
 }
 
+/**
+ * The sickle's trail, laid along the arc it has swept as a strip: its
+ * length runs from the start edge (left) to the blade (right) and its
+ * height from the outer edge of the crescent (top) to the inner (bottom).
+ * Light of a pale warm bone-white, `color`, brightest at the blade and at
+ * the outer edge, fading to nothing at the start edge and towards the
+ * inner edge, with a narrow soft rim on the outside so it reads as one
+ * clean cut through the air. The sickle adds it to what is under it.
+ */
+export const TRAIL = { width: 128, height: 32, color: [242, 230, 204] };
+
+function createTrail(textures: Phaser.Textures.TextureManager): void {
+  const { width, height } = TRAIL;
+  const { canvas, g } = makeCanvas(width, height, 1);
+  const image = g.createImageData(width, height);
+  for (let j = 0; j < height; j++) {
+    const v = (j + 0.5) / height;
+    const across = smoothstep(0, 0.12, v) * (1 - v) ** 1.4;
+    for (let i = 0; i < width; i++) {
+      const u = (i + 0.5) / width;
+      const along = u ** 1.6;
+      image.data.set([...TRAIL.color, Math.round(255 * Math.min(1, 1.25 * across * along))], (j * width + i) * 4);
+    }
+  }
+  g.putImageData(image, 0, 0);
+  textures.addCanvas(TEX.trail, canvas);
+}
+
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -342,4 +371,5 @@ export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createSpeck(textures, createDot(textures));
   createCoals(textures);
   createRing(textures);
+  createTrail(textures);
 }

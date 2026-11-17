@@ -129,6 +129,47 @@ export const CFG = {
   },
 
   /**
+   * The sickle: the hero reaps before him, up or down the screen the way he
+   * last walked, sweeping a fan on the ground and cutting all the blade
+   * passes over. How many ways, how hard, how far, how wide and how often
+   * is in `items.sickle`.
+   */
+  sickle: {
+    /**
+     * A swing has three beats, like a drawn slash. The raise: the sickle
+     * appears at the starting edge of the fan and is held there, drawing
+     * back `drawBack` degrees, for `raise` seconds. The sweep: it crosses
+     * the fan in `sweep` seconds, fastest in the middle and easing into the
+     * far edge, cutting as it passes; nothing is cut before or after. The
+     * rest: it stays at the far edge and fades out over `rest` seconds.
+     */
+    raise: 0.1,
+    drawBack: 12,
+    sweep: 0.26,
+    rest: 0.18,
+    /** A light push away from the hero. */
+    knockback: 90,
+    /**
+     * The blade cuts what it passed over in a step, or an enemy up to this
+     * far, in world units along the arc, behind where it was at the step
+     * before, so that one stepping against the swing is not missed.
+     */
+    margin: 6,
+    /** Height of the sickle above the ground it sweeps: about the hero's middle. */
+    lift: 26,
+    /** Where the middle of the sprite travels, as a share of the reach: the blade's tip reaches about the edge. */
+    blade: 0.7,
+    /**
+     * The trail the blade leaves in the air: a crescent along the whole arc
+     * swept so far, its outer edge on the reach, `width` of the reach wide
+     * and brightest at the blade, tapering to nothing at the starting edge.
+     * It is light added to the night, `alpha` at its brightest, and lingers
+     * `linger` seconds after the sweep, fading. Its colour is TRAIL's.
+     */
+    trail: { width: 0.42, alpha: 0.9, linger: 0.2 },
+  },
+
+  /**
    * Levels: the experience the skull drinks in fills a level, and each
    * level asks for more than the last.
    */
@@ -187,6 +228,22 @@ export const CFG = {
       { damage: 15, radius: 140, cooldown: 4.2, knockback: 600 },
       { damage: 15, radius: 170, cooldown: 4.2, knockback: 600 },
       { damage: 30, radius: 170, cooldown: 3.5, knockback: 600 },
+    ],
+    /**
+     * Swung every `cooldown` seconds, whether or not anyone is there, before
+     * the hero the way he last walked up or down the screen, never to the
+     * sides: the blade sweeps a fan of `arc` degrees centred straight down
+     * or straight up, out to `reach` from his feet on the ground (so
+     * flattened like CFG.ground, shallower than it is wide), and cuts every
+     * enemy it passes over for `damage`. With `ways` 2 he reaps up and down
+     * at the same moment. It never seeks an enemy.
+     */
+    sickle: [
+      { ways: 1, damage: 10, reach: 90, arc: 100, cooldown: 1.2 },
+      { ways: 1, damage: 10, reach: 110, arc: 100, cooldown: 1.2 },
+      { ways: 1, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
+      { ways: 2, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
+      { ways: 2, damage: 30, reach: 130, arc: 140, cooldown: 1.0 },
     ],
     /** Sparks are drawn in from `pickupRadius` instead of `spark.pickupRadius`. */
     hagStone: [
@@ -321,3 +378,4 @@ export type ItemLadders = typeof CFG.items;
 export type StakeConfig = typeof CFG.stake;
 export type TeethConfig = typeof CFG.teeth;
 export type BellConfig = typeof CFG.bell;
+export type SickleConfig = typeof CFG.sickle;

@@ -46,6 +46,12 @@ export class Player {
   invulnerable = 0;
   /** 1 when facing right, -1 when facing left. */
   facing = 1;
+  /**
+   * The way he last walked up or down the screen: 1 down, towards the
+   * viewer, -1 up. Kept when he stops or walks only to the sides; he starts
+   * turned down.
+   */
+  facingY = 1;
   moving = false;
   /** Vertical offset of the drawn figure for the current walk frame. */
   private bob = 0;
@@ -80,6 +86,7 @@ export class Player {
       this.x += (dirX / length) * CFG.player.speed * dt;
       this.y += (dirY / length) * CFG.player.speed * dt;
       if (dirX !== 0) this.facing = dirX;
+      if (dirY !== 0) this.facingY = Math.sign(dirY);
     }
     if (this.invulnerable > 0) this.invulnerable -= dt;
   }

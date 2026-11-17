@@ -1,4 +1,5 @@
 import bellUrl from '../art/sprites/item-bell.png';
+import sickleUrl from '../art/sprites/item-sickle.png';
 import hagStoneUrl from '../art/sprites/item-hag-stone.png';
 import stakeUrl from '../art/sprites/item-stake.png';
 import teethUrl from '../art/sprites/item-teeth.png';
@@ -24,6 +25,7 @@ const PICTURES: Record<ItemId, string> = {
   stake: stakeUrl,
   teeth: teethUrl,
   bell: bellUrl,
+  sickle: sickleUrl,
   hagStone: hagStoneUrl,
 };
 

@@ -41,7 +41,7 @@ describe('a new run', () => {
   it('starts at level 1 with only the stake, at level 1', () => {
     const progress = newProgress(ladders);
     expect(progress.level).toBe(1);
-    expect(progress.items).toEqual({ stake: 1, teeth: 0, bell: 0, hagStone: 0 });
+    expect(progress.items).toEqual({ stake: 1, teeth: 0, bell: 0, sickle: 0, hagStone: 0 });
   });
 });
 
@@ -122,7 +122,7 @@ describe('a pick', () => {
       cards = offer(progress, ladders, levels, Math.random);
     }
     expect(picks).toBe(5 * Object.keys(ladders).length - 1);
-    expect(progress.items).toEqual({ stake: 5, teeth: 5, bell: 5, hagStone: 5 });
+    expect(progress.items).toEqual({ stake: 5, teeth: 5, bell: 5, sickle: 5, hagStone: 5 });
     expect(progress.choices).toBe(0);
   });
 });
@@ -155,6 +155,16 @@ describe('the numbers each level gives', () => {
       { damage: 15, radius: 140, cooldown: 4.2, knockback: 600 },
       { damage: 15, radius: 170, cooldown: 4.2, knockback: 600 },
       { damage: 30, radius: 170, cooldown: 3.5, knockback: 600 },
+    ]);
+  });
+
+  it('are the sickle ladder', () => {
+    expect([1, 2, 3, 4, 5].map((level) => itemStats(ladders, 'sickle', level))).toEqual([
+      { ways: 1, damage: 10, reach: 90, arc: 100, cooldown: 1.2 },
+      { ways: 1, damage: 10, reach: 110, arc: 100, cooldown: 1.2 },
+      { ways: 1, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
+      { ways: 2, damage: 15, reach: 110, arc: 140, cooldown: 1.2 },
+      { ways: 2, damage: 30, reach: 130, arc: 140, cooldown: 1.0 },
     ]);
   });
 
@@ -201,6 +211,20 @@ describe('a card', () => {
       'Wounds for 15, tolls every 4.2 s',
       'Rings out wider',
       'Wounds for 30, tolls every 3.5 s',
+    ]);
+  });
+
+  it('reads every level of the sickle', () => {
+    expect(cardFor(newProgress(ladders), ladders, 'sickle')).toMatchObject({
+      name: 'Sickle',
+      level: 1,
+      line: 'Reaps before you, up or down the way you walk',
+    });
+    expect([2, 3, 4, 5].map((level) => gainLine(ladders, 'sickle', level))).toEqual([
+      'Reaps further',
+      'Wounds for 15, reaps wider',
+      'Also reaps the other way',
+      'Wounds for 30, reaps further, swung every 1 s',
     ]);
   });
 
