@@ -74,6 +74,14 @@ export const CFG = {
   stake: {
     speed: 640,
     knockback: 160,
+    /**
+     * A volley of two flies side by side on parallel lines, one a little
+     * above the hero's line and one a little below, this far apart; never
+     * tilted.
+     */
+    spread: 14,
+    /** Seconds after the first stake of a volley that the next one leaves. */
+    stagger: 0.09,
   },
 
   /**
@@ -144,16 +152,19 @@ export const CFG = {
     /**
      * Thrown every `cooldown` seconds, whether or not anyone is there, the
      * way the hero faces (exactly left or right, never tilted), and `ways`
-     * ways at once: 1 ahead, 2 ahead and behind, 4 adds straight up and
-     * down. Each stake flies straight for `range` and goes through `pierce`
-     * enemies; it never seeks one.
+     * ways at once: 1 ahead, 2 ahead and behind. It works to the sides;
+     * what is above and below him is the sickle's. Each way gets a volley
+     * of `volley` stakes, side by side and a moment apart (see
+     * CFG.stake.spread and stagger). Each stake flies straight for `range`,
+     * wounds on its own and goes through `pierce` enemies; it never seeks
+     * one.
      */
     stake: [
-      { ways: 1, damage: 10, cooldown: 0.6, range: 120, pierce: 1 },
-      { ways: 1, damage: 10, cooldown: 0.6, range: 170, pierce: 2 },
-      { ways: 2, damage: 15, cooldown: 0.5, range: 170, pierce: 2 },
-      { ways: 2, damage: 15, cooldown: 0.5, range: 240, pierce: 3 },
-      { ways: 4, damage: 30, cooldown: 0.4, range: 240, pierce: 3 },
+      { ways: 1, volley: 1, damage: 10, cooldown: 0.6, range: 120, pierce: 1 },
+      { ways: 1, volley: 1, damage: 10, cooldown: 0.6, range: 170, pierce: 2 },
+      { ways: 2, volley: 1, damage: 15, cooldown: 0.5, range: 170, pierce: 2 },
+      { ways: 2, volley: 1, damage: 15, cooldown: 0.5, range: 240, pierce: 3 },
+      { ways: 2, volley: 2, damage: 30, cooldown: 0.4, range: 240, pierce: 3 },
     ],
     /** `count` fangs, `radius` from the hero, one turn every `period` seconds. */
     teeth: [
@@ -307,5 +318,6 @@ export type UpyrConfig = typeof CFG.upyr;
 export type SparkConfig = typeof CFG.spark;
 export type LevelConfig = typeof CFG.levels;
 export type ItemLadders = typeof CFG.items;
+export type StakeConfig = typeof CFG.stake;
 export type TeethConfig = typeof CFG.teeth;
 export type BellConfig = typeof CFG.bell;

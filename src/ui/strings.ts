@@ -47,7 +47,8 @@ export const STRINGS = {
       name: 'Aspen stake',
       gain: 'Thrown the way you face',
       gains: {
-        ways: (_from, to) => (to === 2 ? 'also thrown behind' : to === 4 ? 'thrown four ways' : `thrown ${to} ways`),
+        ways: (_from, to) => (to === 2 ? 'also thrown behind' : 'thrown ahead only'),
+        volley: (_from, to) => (to === 2 ? 'thrown two at a time' : `thrown ${to} at a time`),
         damage: woundsFor,
         cooldown: (_from, to) => `thrown every ${to} s`,
         range: (from, to) => (to > from ? 'flies further' : 'flies less far'),

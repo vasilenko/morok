@@ -5,7 +5,7 @@ import type { Enemy } from '../entities/enemy';
 import type { Horde } from '../entities/Horde';
 import type { Fx } from '../fx/Fx';
 import { itemStats } from '../progression/progression';
-import { throwAngles } from './stake';
+import { throwShots, type Shot, type StakeStats } from './stake';
 
 interface Stake {
   x: number;
@@ -29,18 +29,20 @@ const HIT_RADIUS = 5;
  */
 const GRIP = { x: 0.2, y: 0.49 };
 
-type StakeStats = (typeof CFG.items.stake)[number];
-
 /**
  * The starting weapon: thrown on its own, on its cooldown, the way the hero
- * faces, exactly left or right with no homing and no tilt; it pierces
- * through a few enemies in its path. How many ways, how hard, how often, how far and through how
- * many grows with its level (CFG.items.stake).
+ * faces, exactly left or right with no homing and no tilt, from level 3
+ * behind him as well, and at the top level two at a time each way, side by
+ * side and a moment apart; it pierces through a few enemies in its path.
+ * How hard, how often, how far and through how many grows with its level
+ * (CFG.items.stake).
  */
 export class AspenStake {
   private stats: StakeStats = CFG.items.stake[0];
   private cooldown = 0.4;
   private flying: Stake[] = [];
+  /** Stakes of the last throw not yet left the hand, with the seconds until they do. */
+  private waiting: Array<{ shot: Shot; in: number }> = [];
   private readonly pool: Phaser.GameObjects.Image[] = [];
 
   constructor(
@@ -61,8 +63,19 @@ export class AspenStake {
    */
   update(dt: number, origin: { x: number; y: number }, facing: number): number {
     this.cooldown -= dt;
+    // Stakes of a volley left in the hand go when their turn comes, from where the hero is then.
+    let held = 0;
+    for (const wait of this.waiting) {
+      wait.in -= dt;
+      if (wait.in <= 0) this.fire(origin, wait.shot.angle, wait.shot.lane);
+      else this.waiting[held++] = wait;
+    }
+    this.waiting.length = held;
     if (this.cooldown <= 0) {
-      for (const angle of throwAngles(facing, this.stats.ways)) this.fire(origin, angle);
+      for (const shot of throwShots(facing, this.stats, CFG.stake)) {
+        if (shot.delay <= 0) this.fire(origin, shot.angle, shot.lane);
+        else this.waiting.push({ shot, in: shot.delay });
+      }
       // Added rather than set, so the throws keep their time on average whatever the frame rate.
       this.cooldown = Math.max(0, this.cooldown + this.stats.cooldown);
     }
@@ -82,12 +95,13 @@ export class AspenStake {
     return kills;
   }
 
-  private fire(origin: { x: number; y: number }, angle: number): void {
+  /** Throws a stake along `angle` on a line `lane` below the hero's (above it if negative). */
+  private fire(origin: { x: number; y: number }, angle: number, lane: number): void {
     const sprite = this.pool.pop()?.setVisible(true) ?? this.addSprite();
-    sprite.setPosition(origin.x, origin.y).setRotation(angle);
+    sprite.setPosition(origin.x, origin.y + lane).setRotation(angle);
     this.flying.push({
       x: origin.x,
-      y: origin.y,
+      y: origin.y + lane,
       dx: Math.cos(angle),
       dy: Math.sin(angle),
       left: this.stats.range,

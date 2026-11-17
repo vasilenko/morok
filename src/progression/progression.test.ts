@@ -130,11 +130,11 @@ describe('a pick', () => {
 describe('the numbers each level gives', () => {
   it('are the stake ladder', () => {
     expect([1, 2, 3, 4, 5].map((level) => itemStats(ladders, 'stake', level))).toEqual([
-      { ways: 1, damage: 10, cooldown: 0.6, range: 120, pierce: 1 },
-      { ways: 1, damage: 10, cooldown: 0.6, range: 170, pierce: 2 },
-      { ways: 2, damage: 15, cooldown: 0.5, range: 170, pierce: 2 },
-      { ways: 2, damage: 15, cooldown: 0.5, range: 240, pierce: 3 },
-      { ways: 4, damage: 30, cooldown: 0.4, range: 240, pierce: 3 },
+      { ways: 1, volley: 1, damage: 10, cooldown: 0.6, range: 120, pierce: 1 },
+      { ways: 1, volley: 1, damage: 10, cooldown: 0.6, range: 170, pierce: 2 },
+      { ways: 2, volley: 1, damage: 15, cooldown: 0.5, range: 170, pierce: 2 },
+      { ways: 2, volley: 1, damage: 15, cooldown: 0.5, range: 240, pierce: 3 },
+      { ways: 2, volley: 2, damage: 30, cooldown: 0.4, range: 240, pierce: 3 },
     ]);
   });
 
@@ -184,7 +184,7 @@ describe('a card', () => {
   it('names every number that changes', () => {
     expect(gainLine(ladders, 'stake', 3)).toBe('Also thrown behind, wounds for 15, thrown every 0.5 s');
     expect(gainLine(ladders, 'stake', 4)).toBe('Flies further, pierces 3 of the dead');
-    expect(gainLine(ladders, 'stake', 5)).toBe('Thrown four ways, wounds for 30, thrown every 0.4 s');
+    expect(gainLine(ladders, 'stake', 5)).toBe('Thrown two at a time, wounds for 30, thrown every 0.4 s');
     expect(gainLine(ladders, 'teeth', 3)).toBe('Wounds for 15, circles wider');
     expect(gainLine(ladders, 'teeth', 5)).toBe('5 fangs, circles wider');
     expect(gainLine(ladders, 'hagStone', 2)).toBe('Draws sparks from 29% further');
