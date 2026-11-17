@@ -6,6 +6,17 @@ export const CFG = {
   /** World-to-screen magnification. */
   zoom: 1.4,
 
+  /**
+   * The ground as the camera sees it, from above at three-quarters: a
+   * circle lying on it is an ellipse whose height is `flatten` of its
+   * width. Whatever circles, spreads or strikes round a point on the
+   * ground (the teeth, the bell's ring, the book's signs) is flattened
+   * alike, in what it reaches as in how it is drawn.
+   */
+  ground: {
+    flatten: 0.75,
+  },
+
   player: {
     speed: 175,
     hp: 100,
@@ -76,8 +87,6 @@ export const CFG = {
     knockback: 90,
     /** Reach of a fang's point on the ground, added to an enemy's radius. */
     hitRadius: 6,
-    /** The circle as seen from above at three-quarters: its height is this share of its width. */
-    flatten: 0.75,
     /** Height of the fangs above the ground: about the hero's middle. */
     lift: 26,
     /**

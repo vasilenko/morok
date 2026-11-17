@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { CFG, type TeethConfig } from '../config';
 import { canBite, newTeeth, placeFang, stepTeeth, type Teeth, type TeethStats } from './teeth';
 
-const cfg: TeethConfig = { rehit: 0.3, knockback: 90, hitRadius: 6, flatten: 0.75, lift: 26, settle: 5 };
+const cfg: TeethConfig = { rehit: 0.3, knockback: 90, hitRadius: 6, lift: 26, settle: 5 };
+const FLATTEN = CFG.ground.flatten;
 const STEP = 1 / 60;
 const level1: TeethStats = { count: 2, damage: 10, radius: 85, period: 1.6 };
 
@@ -34,12 +35,12 @@ describe('the wolf teeth', () => {
   it('grow out from the hero when gained, without a jump', () => {
     const teeth = newTeeth();
     stepTeeth(teeth, level1, STEP, cfg);
-    let last = placeFang(teeth, teeth.fangs[0], 0, 0, cfg);
+    let last = placeFang(teeth, teeth.fangs[0], 0, 0, FLATTEN);
     // A tenth of the way out after a frame, and never more than an eighth of the way in one frame.
     expect(Math.hypot(last.x, last.y)).toBeLessThan(level1.radius / 10);
     for (let i = 0; i < 120; i++) {
       stepTeeth(teeth, level1, STEP, cfg);
-      const place = placeFang(teeth, teeth.fangs[0], 0, 0, cfg);
+      const place = placeFang(teeth, teeth.fangs[0], 0, 0, FLATTEN);
       expect(Math.hypot(place.x - last.x, place.y - last.y)).toBeLessThan(level1.radius / 8);
       last = place;
     }
@@ -78,13 +79,13 @@ describe('the wolf teeth', () => {
     const fang = teeth.fangs[0];
     // Right of the hero: as wide as the radius, heading down the screen.
     fang.slot = -teeth.turn;
-    const right = placeFang(teeth, fang, 100, 200, cfg);
+    const right = placeFang(teeth, fang, 100, 200, FLATTEN);
     expect(right.x).toBeCloseTo(185, 1);
     expect(right.y).toBeCloseTo(200, 3);
     expect(right.heading).toBeCloseTo(Math.PI / 2, 3);
     // Below the hero: three quarters as far, heading left.
     fang.slot = Math.PI / 2 - teeth.turn;
-    const below = placeFang(teeth, fang, 100, 200, cfg);
+    const below = placeFang(teeth, fang, 100, 200, FLATTEN);
     expect(below.x).toBeCloseTo(100, 1);
     expect(below.y).toBeCloseTo(200 + 63.75, 1);
     expect(Math.abs(below.heading)).toBeCloseTo(Math.PI, 3);
@@ -102,9 +103,9 @@ describe('the wolf teeth', () => {
     const fang = teeth.fangs[0];
     for (let k = 0; k < 16; k++) {
       fang.slot = (k * Math.PI) / 8;
-      const here = placeFang(teeth, fang, 0, 0, cfg);
+      const here = placeFang(teeth, fang, 0, 0, FLATTEN);
       fang.slot += 1e-4;
-      const next = placeFang(teeth, fang, 0, 0, cfg);
+      const next = placeFang(teeth, fang, 0, 0, FLATTEN);
       const travel = Math.atan2(next.y - here.y, next.x - here.x);
       expect(Math.abs(Math.atan2(Math.sin(travel - here.heading), Math.cos(travel - here.heading)))).toBeLessThan(1e-3);
     }
@@ -115,7 +116,7 @@ describe('the wolf teeth ladder', () => {
   const cfg = CFG.teeth;
 
   it('keeps the fangs well clear of the hero, above and below him too', () => {
-    for (const row of CFG.items.teeth) expect(row.radius * cfg.flatten).toBeGreaterThanOrEqual(60);
+    for (const row of CFG.items.teeth) expect(row.radius * FLATTEN).toBeGreaterThanOrEqual(60);
   });
 
   it('never moves a fang further in a frame than it can bite across', () => {
@@ -123,10 +124,10 @@ describe('the wolf teeth ladder', () => {
       const teeth = newTeeth();
       run(teeth, row, 3);
       const fang = teeth.fangs[0];
-      let last = placeFang(teeth, fang, 0, 0, cfg);
+      let last = placeFang(teeth, fang, 0, 0, FLATTEN);
       for (let i = 0; i < 120; i++) {
         stepTeeth(teeth, row, STEP, cfg);
-        const place = placeFang(teeth, fang, 0, 0, cfg);
+        const place = placeFang(teeth, fang, 0, 0, FLATTEN);
         // Less than the reach of a fang on the smallest enemy, a navia.
         expect(Math.hypot(place.x - last.x, place.y - last.y)).toBeLessThan(cfg.hitRadius + CFG.navia.radius);
         last = place;

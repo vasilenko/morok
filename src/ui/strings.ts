@@ -1,3 +1,17 @@
+import type { ItemLadders } from '../config';
+
+/** What raising an item gives for one of its numbers, from its old value to its new one. */
+export type Phrase = (from: number, to: number) => string;
+
+/** An item's text: see STRINGS.items. */
+interface ItemText<K extends keyof ItemLadders> {
+  name: string;
+  gain: string;
+  gains: Partial<Record<keyof ItemLadders[K][number], Phrase>>;
+}
+
+const woundsFor: Phrase = (_from, to) => `wounds for ${to}`;
+
 /** All player-facing text, kept in one place so it can be localized later. */
 export const STRINGS = {
   title: 'MOROK',
@@ -22,26 +36,39 @@ export const STRINGS = {
   newItem: 'New',
   itemLevel: (level: number) => `Level ${level}`,
 
-  /** Each item's name and what gaining it does. */
-  items: {
-    stake: { name: 'Aspen stake', gain: 'Thrown the way you face' },
-    teeth: { name: 'Wolf teeth', gain: 'Fangs circle you and bite all they touch' },
-    hagStone: { name: 'Hag stone', gain: 'Draws sparks in from further away' },
-  },
-
   /**
-   * What raising an item gives, one phrase per number that changes, from
-   * its old value to its new one; a card joins them into one line.
+   * Each item's name, what gaining it does, and what raising it gives: one
+   * phrase per number that changes, from its old value to its new one,
+   * which a card joins into one line. The phrases are the item's own, since
+   * the same number means different things for different items.
    */
-  gains: {
-    ways: (_from: number, to: number) =>
-      to === 2 ? 'also thrown behind' : to === 4 ? 'thrown four ways' : `thrown ${to} ways`,
-    damage: (_from: number, to: number) => `wounds for ${to}`,
-    cooldown: (_from: number, to: number) => `thrown every ${to} s`,
-    range: (from: number, to: number) => (to > from ? 'flies further' : 'flies less far'),
-    pierce: (_from: number, to: number) => `pierces ${to} of the dead`,
-    count: (_from: number, to: number) => `${to} fangs`,
-    radius: (from: number, to: number) => (to > from ? 'circles wider' : 'circles closer'),
-    pickupRadius: (from: number, to: number) => `draws sparks from ${Math.round((to / from) * 100) - 100}% further`,
-  },
+  items: {
+    stake: {
+      name: 'Aspen stake',
+      gain: 'Thrown the way you face',
+      gains: {
+        ways: (_from, to) => (to === 2 ? 'also thrown behind' : to === 4 ? 'thrown four ways' : `thrown ${to} ways`),
+        damage: woundsFor,
+        cooldown: (_from, to) => `thrown every ${to} s`,
+        range: (from, to) => (to > from ? 'flies further' : 'flies less far'),
+        pierce: (_from, to) => `pierces ${to} of the dead`,
+      },
+    },
+    teeth: {
+      name: 'Wolf teeth',
+      gain: 'Fangs circle you and bite all they touch',
+      gains: {
+        count: (_from, to) => `${to} fangs`,
+        damage: woundsFor,
+        radius: (from, to) => (to > from ? 'circles wider' : 'circles closer'),
+      },
+    },
+    hagStone: {
+      name: 'Hag stone',
+      gain: 'Draws sparks in from further away',
+      gains: {
+        pickupRadius: (from, to) => `draws sparks from ${Math.round((to / from) * 100) - 100}% further`,
+      },
+    },
+  } satisfies { [K in keyof ItemLadders]: ItemText<K> },
 };

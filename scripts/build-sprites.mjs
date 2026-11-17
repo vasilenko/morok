@@ -18,7 +18,9 @@
  *
  * The ground tile is resized on its own, keeping its seams; see GROUND.
  * The items' pictures and the kill count's icon for the interface are plain
- * images; see ITEM_PICTURES and KILLS_ICON.
+ * images; see ITEM_PICTURES and KILLS_ICON. The signs the black book cuts
+ * are drawn in thin lines that the usual cutting would split into strokes,
+ * so they are taken by the quarter of their sheet instead; see SIGNS.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -160,6 +162,52 @@ const ITEM_PICTURES = {
   outputs: ['item-stake.png', 'item-teeth.png', 'item-hag-stone.png'],
   size: 144,
   cut: PLAIN_SHEET,
+};
+
+/** The pictures of the funeral bell, the sickle and the black book, drawn on a sheet of their own. */
+const RELIC_PICTURES = {
+  source: 'items-bell-sickle-book.png',
+  outputs: ['item-bell.png', 'item-sickle.png', 'item-book.png'],
+  size: 144,
+  cut: PLAIN_SHEET,
+};
+
+/**
+ * The bell and the sickle as they are seen in the world, from the same
+ * sheet as their pictures: the bell over the hero when it tolls, the
+ * sickle in his swing. Packed into an atlas, each at its own size in world
+ * units; the book has no sprite.
+ */
+const RELICS = {
+  source: RELIC_PICTURES.source,
+  output: 'relics',
+  frames: 3,
+  cut: PLAIN_SHEET,
+  take: {
+    1: { name: 'bell', height: 20 },
+    2: { name: 'sickle', width: 40 },
+  },
+};
+
+/**
+ * The four signs the black book cuts into the ground, each in its own
+ * quarter of a plain white sheet, drawn in thin dark lines. Every quarter's
+ * lines, trimmed to their bounds, become one frame, `size` world units
+ * square: the widest strike (CFG.items.book), which the game flattens to
+ * lie on the ground. A pixel's darkness is its alpha, between `from`
+ * (none) and `to` (full) as a share of black; its colour is `ink`, so the
+ * frame is both the cut and the mask its light rises from.
+ */
+const SIGNS = {
+  source: 'signs.png',
+  output: 'signs',
+  frames: ['sign-1', 'sign-2', 'sign-3', 'sign-4'],
+  size: 110,
+  from: 0.08,
+  to: 0.63,
+  /** Darkness above which a pixel counts as part of a line when trimming. */
+  trim: 0.2,
+  ink: [22, 15, 11],
 };
 
 /**
@@ -435,9 +483,68 @@ function joinHorizontally(frames, frameWidth, frameHeight) {
  */
 async function buildScenery({ output, sheets }) {
   const props = [];
-  for (const sheet of sheets) props.push(...(await cutScenerySheet(sheet)));
+  for (const { source, take } of sheets) props.push(...(await cutTaken(source, KURGAN_SHEET, SCENERY_SHEET_FRAMES, take)));
 
   await writeAtlas('scenery', output, props);
+}
+
+/** Cuts the taken figures out of a sheet of `frames` and packs them into an atlas, each at its own size. */
+async function buildTakenAtlas({ source, output, frames, cut, take }) {
+  await writeAtlas(source, output, await cutTaken(source, cut, frames, take));
+}
+
+/**
+ * Cuts each quarter of the signs' sheet into a frame of its own (see SIGNS)
+ * and packs them into an atlas.
+ */
+async function buildSigns({ source, output, frames, size, from, to, trim, ink }) {
+  const { data, info } = await sharp(join(sourceDir, source)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const side = Math.round(size * ART_SCALE);
+  const props = [];
+  for (const [i, name] of frames.entries()) {
+    const left = Math.floor((i * width) / frames.length);
+    const right = Math.floor(((i + 1) * width) / frames.length);
+    const quarter = { width: right - left, height };
+    const darkness = Buffer.alloc(quarter.width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < quarter.width; x++) {
+        const at = (y * width + left + x) * channels;
+        const light = (0.299 * data[at] + 0.587 * data[at + 1] + 0.114 * data[at + 2]) / 255;
+        darkness[y * quarter.width + x] = Math.round(255 * Math.min(1, Math.max(0, (1 - light - from) / (to - from))));
+      }
+    }
+    const bounds = darkBounds(darkness, quarter.width, height, Math.round(255 * trim));
+    const alpha = await sharp(darkness, { raw: { ...quarter, channels: 1 } })
+      .extract(bounds)
+      .resize({ width: side, height: side, fit: 'fill', kernel: sharp.kernel.lanczos3 })
+      .extractChannel(0)
+      .raw()
+      .toBuffer();
+    const rgba = Buffer.alloc(side * side * 4);
+    for (let p = 0; p < alpha.length; p++) rgba.set([...ink, alpha[p]], p * 4);
+    props.push({ name, data: rgba, width: side, height: side });
+  }
+  await writeAtlas(source, output, props);
+}
+
+/** Bounds of the bytes of a one-channel image above `min`. */
+function darkBounds(data, width, height, min) {
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[y * width + x] <= min) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < 0) throw new Error('no line found');
+  return { left, top, width: right - left + 1, height: bottom - top + 1 };
 }
 
 /**
@@ -569,9 +676,12 @@ function round4(value) {
   return Math.round(value * 10000) / 10000;
 }
 
-/** The taken props of one sheet as raw RGBA images at their game size. */
-async function cutScenerySheet({ source, take }) {
-  const { rgba, labels, figures, info } = await cutSheet(source, KURGAN_SHEET, SCENERY_SHEET_FRAMES);
+/**
+ * The figures of a sheet of `frames` listed in `take` (see SCENERY), as raw
+ * RGBA images at their game size.
+ */
+async function cutTaken(source, cut, frames, take) {
+  const { rgba, labels, figures, info } = await cutSheet(source, cut, frames);
 
   const props = [];
   for (const [frame, { name, width, height }] of Object.entries(take)) {
@@ -658,4 +768,7 @@ await buildScenery(SCENERY);
 await buildPoseAtlas(UPYR);
 await buildFigureAtlas(WOLF_TEETH);
 await buildPictures(ITEM_PICTURES);
+await buildPictures(RELIC_PICTURES);
+await buildTakenAtlas(RELICS);
+await buildSigns(SIGNS);
 await buildPictures(KILLS_ICON);

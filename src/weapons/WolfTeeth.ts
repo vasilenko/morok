@@ -59,7 +59,7 @@ export class WolfTeeth {
 
     let kills = 0;
     this.teeth.fangs.forEach((fang, i) => {
-      const place = placeFang(this.teeth, fang, x, feetY, cfg);
+      const place = placeFang(this.teeth, fang, x, feetY, CFG.ground.flatten);
       const frame = i % FANG_FRAMES.length;
       this.sprite(i)
         .setVisible(true)

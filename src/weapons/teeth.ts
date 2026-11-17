@@ -3,7 +3,8 @@ import type { ItemLadders, TeethConfig } from '../config';
 /**
  * The wolf teeth as pure logic: fangs evenly spaced on a circle round the
  * hero, turning together. The circle lies on the ground, so seen from above
- * at three-quarters it is an ellipse, `flatten` times as tall as it is wide.
+ * at three-quarters it is an ellipse, `flatten` times as tall as it is wide
+ * (CFG.ground).
  */
 export type TeethStats = ItemLadders['teeth'][number];
 
@@ -60,17 +61,18 @@ export function stepTeeth(teeth: Teeth, stats: TeethStats, dt: number, cfg: Teet
 
 /**
  * Where `fang` is round a hero whose feet stand on the ground point
- * (heroX, heroY). It travels clockwise on screen.
+ * (heroX, heroY), on a circle flattened by `flatten`. It travels clockwise
+ * on screen.
  */
-export function placeFang(teeth: Teeth, fang: Fang, heroX: number, heroY: number, cfg: TeethConfig): FangPlace {
+export function placeFang(teeth: Teeth, fang: Fang, heroX: number, heroY: number, flatten: number): FangPlace {
   const angle = teeth.turn + fang.slot;
   const reach = teeth.radius * fang.grow;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   return {
     x: heroX + reach * cos,
-    y: heroY + reach * cfg.flatten * sin,
-    heading: Math.atan2(cfg.flatten * cos, -sin),
+    y: heroY + reach * flatten * sin,
+    heading: Math.atan2(flatten * cos, -sin),
   };
 }
 
