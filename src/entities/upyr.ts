@@ -28,6 +28,7 @@ export const UPYR: EnemyKind<UpyrMind> = {
   shadowWidth: 30,
   shadowAlpha: 0.45,
   groundY: FEET_Y,
+  knockback: 1,
 
   create() {
     const cfg = CFG.upyr;

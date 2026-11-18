@@ -146,7 +146,7 @@ function lunge(
 }
 
 /** Distance from point (px, py) to the segment from (ax, ay) to (bx, by). */
-function segmentDistance(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
+export function segmentDistance(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
   const sx = bx - ax;
   const sy = by - ay;
   const length2 = sx * sx + sy * sy;

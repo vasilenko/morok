@@ -58,6 +58,11 @@ export interface EnemyKind<S = unknown> {
   readonly shadowAlpha: number;
   /** How far below its position the ground is: where it stands or its shadow falls, and where its spark drops. */
   readonly groundY: number;
+  /**
+   * The share of a blow's knock-back that moves it: 1 for most, less for
+   * the heavy. Applied to every knock-back a weapon deals (see Horde.damage).
+   */
+  readonly knockback: number;
   /** Worth of the spark it leaves when laid to rest. */
   xp(): number;
   /** Stats and fresh state for a new enemy; `elapsed` is the time survived so far. */

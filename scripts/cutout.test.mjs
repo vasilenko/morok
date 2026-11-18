@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   backdropMask,
+  clearUninked,
   cutOut,
+  findCells,
   groundPoint,
   labelComponents,
   readingOrder,
+  removeGroundLine,
   splitFigures,
   upperBodyAnchor,
 } from './cutout.mjs';
@@ -175,5 +178,82 @@ describe('groundPoint', () => {
       [0, 5, 4, 1, 5],
     ]);
     expect(groundPoint(rgba, 4, 6, 8).y).toBe(3);
+  });
+});
+
+describe('findCells', () => {
+  const frame = { minLight: 150, maxLight: 235, maxSpread: 8, minShare: 0.6, minCell: 4 };
+  const GREY = [200, 200, 200];
+
+  it('finds framed cells whose widths differ from row to row, in reading order', () => {
+    const image = sheet(60, 41);
+    // Frames round the sheet and between the rows.
+    image.fill(0, 0, 60, 1, GREY);
+    image.fill(0, 20, 60, 1, GREY);
+    image.fill(0, 40, 60, 1, GREY);
+    image.fill(0, 0, 1, 41, GREY);
+    image.fill(59, 0, 1, 41, GREY);
+    // The top row is cut in two halves, the bottom row at a third.
+    image.fill(30, 0, 1, 21, GREY);
+    image.fill(21, 20, 1, 21, GREY);
+    image.fill(10, 8, 6, 6, INK); // a figure inside a cell does not make a frame
+    const cells = findCells(image.data, 60, 41, 3, frame);
+    expect(cells).toEqual([
+      { left: 1, top: 1, width: 29, height: 19 },
+      { left: 31, top: 1, width: 28, height: 19 },
+      { left: 1, top: 21, width: 20, height: 19 },
+      { left: 22, top: 21, width: 37, height: 19 },
+    ]);
+  });
+});
+
+describe('clearUninked', () => {
+  it('clears a grey number but keeps a small inked drop', () => {
+    const image = sheet(30, 10);
+    image.fill(2, 2, 3, 6, [140, 140, 140]); // the number: grey, no ink
+    image.fill(20, 3, 2, 3, [90, 60, 20]); // a drop of muddy water, dark in its blue
+    const mask = backdropMask(image.data, 30, 10, 3, config);
+    const rgba = cutOut(image.data, 30, 10, 3, mask, edge);
+    clearUninked(rgba, image.data, 30, 10, 3, 80);
+    expect(rgba[at(image, 3, 4) * 4 + 3]).toBe(0);
+    expect(rgba[at(image, 20, 4) * 4 + 3]).toBe(255);
+  });
+});
+
+describe('removeGroundLine', () => {
+  /** A cut-out cell: a foot standing on a line of ink two pixels thick, and a drop above it. */
+  function cell() {
+    const width = 40;
+    const height = 20;
+    const rgba = Buffer.alloc(width * height * 4);
+    const fill = (left, top, w, h, colour) => {
+      for (let y = top; y < top + h; y++) for (let x = left; x < left + w; x++) rgba.set(colour, (y * width + x) * 4);
+    };
+    fill(2, 16, 36, 2, [0, 0, 0, 255]); // the ground line
+    fill(10, 8, 8, 8, [200, 190, 150, 255]); // a foot on it
+    fill(10, 15, 8, 1, [10, 8, 6, 255]); // the sole's outline
+    fill(26, 10, 1, 2, [60, 40, 20, 255]); // a drop
+    return { rgba, width, height, alpha: (x, y) => rgba[(y * width + x) * 4 + 3] };
+  }
+
+  it('clears the line wherever nothing stands on it and keeps it under the foot', () => {
+    const { rgba, width, height, alpha } = cell();
+    expect(removeGroundLine(rgba, width, height, { minRun: 0.5, ink: 60 })).toEqual({ top: 16, bottom: 17 });
+    expect(alpha(3, 16)).toBe(0);
+    expect(alpha(30, 17)).toBe(0);
+    expect(alpha(9, 16)).toBe(0);
+    expect(alpha(18, 16)).toBe(0);
+    // Under the foot, the line is the sole, and the foot is untouched.
+    expect(alpha(12, 16)).toBe(255);
+    expect(alpha(12, 15)).toBe(255);
+    expect(alpha(26, 11)).toBe(255);
+  });
+
+  it('leaves a cell without a ground line alone', () => {
+    const { rgba, width, height, alpha } = cell();
+    for (let x = 0; x < width; x++) rgba[(16 * width + x) * 4 + 3] = x % 4 === 0 ? 0 : 255;
+    for (let x = 0; x < width; x++) rgba[(17 * width + x) * 4 + 3] = x % 4 === 0 ? 0 : 255;
+    expect(removeGroundLine(rgba, width, height, { minRun: 0.5, ink: 60 })).toBeNull();
+    expect(alpha(3, 16)).toBe(255);
   });
 });

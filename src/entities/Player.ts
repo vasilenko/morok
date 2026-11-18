@@ -78,13 +78,17 @@ export class Player {
     return this.hp <= 0;
   }
 
-  /** Moves along the given direction (components in -1..1) and ticks timers. */
-  update(dt: number, dirX: number, dirY: number): void {
+  /**
+   * Moves along the given direction (components in -1..1) at `pace` of his
+   * speed, and ticks timers.
+   */
+  update(dt: number, dirX: number, dirY: number, pace = 1): void {
     this.moving = dirX !== 0 || dirY !== 0;
     if (this.moving) {
       const length = Math.hypot(dirX, dirY);
-      this.x += (dirX / length) * CFG.player.speed * dt;
-      this.y += (dirY / length) * CFG.player.speed * dt;
+      const speed = CFG.player.speed * pace;
+      this.x += (dirX / length) * speed * dt;
+      this.y += (dirY / length) * speed * dt;
       if (dirX !== 0) this.facing = dirX;
       if (dirY !== 0) this.facingY = Math.sign(dirY);
     }

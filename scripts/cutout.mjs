@@ -289,3 +289,153 @@ export function isolateFigure(rgba, labels, width, figure, anchor, canvas, at) {
   }
   return out;
 }
+
+/**
+ * Sheets drawn as a grid of framed cells: every pose in a cell of its own,
+ * drawn round in a thin light-grey line, with a grey number in a corner and
+ * the pose standing on a thin black ground line. The cells of a row need
+ * not be as wide as those of another, so the frames are found, not
+ * assumed.
+ */
+
+/**
+ * @typedef {object} FrameConfig
+ * @property {number} minLight Darkest grey of a frame line, its antialiased fringe included.
+ * @property {number} maxLight Lightest such grey; anything lighter is backdrop.
+ * @property {number} maxSpread Largest difference between channels of a frame pixel.
+ * @property {number} minShare A line of pixels at least this share of frame grey is a frame.
+ * @property {number} minCell Spans between frames no wider than this are gaps between doubled lines, not cells.
+ */
+
+/** Whether the pixel at `i` is the grey of a frame line. */
+function isFrameGrey(data, i, { minLight, maxLight, maxSpread }) {
+  const lo = Math.min(data[i], data[i + 1], data[i + 2]);
+  const hi = Math.max(data[i], data[i + 1], data[i + 2]);
+  return lo >= minLight && hi <= maxLight && hi - lo <= maxSpread;
+}
+
+/**
+ * The spans between frame lines along one axis: `isLine(k)` says whether
+ * line k (a row or a column) is a frame. Each span runs from just after one
+ * frame to just before the next, the image's edges counting as frames;
+ * spans no wider than `minSpan` are left out (see FrameConfig.minCell).
+ */
+function spansBetween(count, isLine, minSpan) {
+  const spans = [];
+  let start = 0;
+  for (let k = 0; k <= count; k++) {
+    if (k < count && !isLine(k)) continue;
+    if (k - start > minSpan) spans.push({ from: start, to: k });
+    start = k + 1;
+  }
+  return spans;
+}
+
+/**
+ * The insides of the framed cells of a sheet, in reading order: row by row
+ * from the top, each row left to right. A row of the image is a frame when
+ * at least `minShare` of it is frame grey; within a band of cells, so is a
+ * column. Each cell is given as { left, top, width, height } of the pixels
+ * inside its frame, the frame's fringe excluded.
+ */
+export function findCells(data, width, height, channels, config) {
+  const minSpan = config.minCell;
+  const share = (count, at) => {
+    let grey = 0;
+    for (let k = 0; k < count; k++) if (isFrameGrey(data, at(k), config)) grey++;
+    return grey / count;
+  };
+  const bands = spansBetween(
+    height,
+    (y) => share(width, (x) => (y * width + x) * channels) >= config.minShare,
+    minSpan,
+  );
+  const cells = [];
+  for (const band of bands) {
+    const rows = band.to - band.from;
+    const columns = spansBetween(
+      width,
+      (x) => share(rows, (k) => ((band.from + k) * width + x) * channels) >= config.minShare,
+      minSpan,
+    );
+    for (const column of columns) {
+      cells.push({ left: column.from, top: band.from, width: column.to - column.from, height: rows });
+    }
+  }
+  return cells;
+}
+
+/** The RGB(A) pixels of a rectangle of an image, as an image of their own. */
+export function crop(data, width, channels, { left, top, width: w, height: h }) {
+  const out = Buffer.alloc(w * h * channels);
+  for (let y = 0; y < h; y++) {
+    const from = ((top + y) * width + left) * channels;
+    data.copy(out, y * w * channels, from, from + w * channels);
+  }
+  return out;
+}
+
+/**
+ * Clears the drawn parts of a cut-out cell that hold no ink: the cell's
+ * number, drawn in grey without an outline. Every inked part of a pose has
+ * some pixel at least as dark as `maxInk` in its darkest channel, even a
+ * falling drop of water; the number has none. `source` is the cell's
+ * pixels before cutting, whose colours the cut has not unblended.
+ */
+export function clearUninked(rgba, source, width, height, channels, maxInk) {
+  const solid = new Uint8Array(width * height);
+  for (let p = 0; p < solid.length; p++) solid[p] = rgba[p * 4 + 3] > 0 ? 1 : 0;
+  const { labels, components } = labelComponents(solid, width, height);
+  const inked = new Uint8Array(components.length + 1);
+  for (let p = 0; p < solid.length; p++) {
+    if (!labels[p]) continue;
+    const i = p * channels;
+    if (Math.min(source[i], source[i + 1], source[i + 2]) <= maxInk) inked[labels[p]] = 1;
+  }
+  for (let p = 0; p < solid.length; p++) {
+    if (labels[p] && !inked[labels[p]]) rgba.fill(0, p * 4, p * 4 + 4);
+  }
+}
+
+/**
+ * @typedef {object} GroundLineConfig
+ * @property {number} minRun A row with a run of ink at least this share of the cell wide is the ground line.
+ * @property {number} ink Brightest channel of an ink pixel, after the cut has unblended it.
+ */
+
+/**
+ * Takes the ground line out from under a pose in a cut-out cell. The line
+ * is a long, thin, perfectly horizontal run of ink near the bottom: the
+ * lowest band of rows that each hold an unbroken run of ink at least
+ * `minRun` of the cell wide. It is cleared in every column where nothing
+ * of the pose stands on it, that is where the pixel just above the band is
+ * less than half opaque. Under the feet the band is kept, as the soles'
+ * outline it has merged into, so the feet lose nothing; nor does anything
+ * lying on the line, a trailing rope or a hand flat on the ground. Returns
+ * the band's rows, or null when the cell has no ground line.
+ */
+export function removeGroundLine(rgba, width, height, { minRun, ink }) {
+  const isInk = (p) => rgba[p * 4 + 3] > 0 && Math.max(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]) <= ink;
+  const longestRun = (y) => {
+    let best = 0;
+    let run = 0;
+    for (let x = 0; x < width; x++) {
+      run = isInk(y * width + x) ? run + 1 : 0;
+      best = Math.max(best, run);
+    }
+    return best;
+  };
+  const isLine = (y) => longestRun(y) >= minRun * width;
+
+  let bottom = height - 1;
+  while (bottom >= 0 && !isLine(bottom)) bottom--;
+  if (bottom < 0) return null;
+  let top = bottom;
+  while (top > 0 && isLine(top - 1)) top--;
+
+  for (let x = 0; x < width; x++) {
+    if (top > 0 && rgba[((top - 1) * width + x) * 4 + 3] >= 128) continue;
+    for (let y = top; y <= bottom; y++) rgba.fill(0, (y * width + x) * 4, (y * width + x) * 4 + 4);
+  }
+  return { top, bottom };
+}

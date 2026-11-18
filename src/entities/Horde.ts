@@ -32,12 +32,12 @@ export class Horde {
     return this.list.length;
   }
 
-  /** `elapsed` is the time survived so far. */
-  spawn(x: number, y: number, elapsed: number, kind: EnemyKind = NAVIA): void {
-    if (this.list.length >= CFG.spawn.maxEnemies) return;
+  /** `elapsed` is the time survived so far. Returns the new enemy, or null when the horde is full. */
+  spawn(x: number, y: number, elapsed: number, kind: EnemyKind = NAVIA): Enemy | null {
+    if (this.list.length >= CFG.spawn.maxEnemies) return null;
     const sprite = this.takeSprite(kind);
     const { hp, radius, speed, state } = kind.create(elapsed);
-    this.list.push({
+    const enemy: Enemy = {
       kind,
       state,
       x,
@@ -53,7 +53,9 @@ export class Horde {
       dead: false,
       sprite,
       shadow: this.takeShadow(kind),
-    });
+    };
+    this.list.push(enemy);
+    return enemy;
   }
 
   /**
@@ -116,11 +118,14 @@ export class Horde {
     return contact;
   }
 
-  /** Applies damage and knockback. Returns whether the enemy died. */
+  /**
+   * Applies damage and knockback, of which the enemy's kind takes its share
+   * (see EnemyKind.knockback). Returns whether the enemy died.
+   */
   damage(enemy: Enemy, amount: number, knockX: number, knockY: number): boolean {
     if (!enemy.kind.anchored(enemy)) {
-      enemy.kx += knockX;
-      enemy.ky += knockY;
+      enemy.kx += knockX * enemy.kind.knockback;
+      enemy.ky += knockY * enemy.kind.knockback;
     }
     enemy.flash = 0.09;
     enemy.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);

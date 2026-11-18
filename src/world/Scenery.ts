@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ART_SCALE, TEX, greyTint } from '../art/textures';
 import { pushOutAll, type Ellipse, type Point } from './footprint';
-import { SCENERY_CELL, footprintOf, footprintsIn, sceneryInCell } from './SceneryLayout';
+import { SCENERY_CELL, footprintOf, footprintsIn, sceneryInCell, watersAround } from './SceneryLayout';
 
 /**
  * Puddles are darkened like the ground (see Ground), a little less, so
@@ -70,6 +70,11 @@ export class Scenery {
   /** Footprints of the solid scenery in every cell that touches the given world rectangle. */
   footprints(left: number, top: number, width: number, height: number): Ellipse[] {
     return footprintsIn(left, top, width, height, this.seed);
+  }
+
+  /** The middles of the puddles and ponds between `near` and `far` from the point (x, y). */
+  waters(x: number, y: number, near: number, far: number): Point[] {
+    return watersAround(x, y, near, far, this.seed);
   }
 
   /**

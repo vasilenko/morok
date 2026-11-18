@@ -70,6 +70,88 @@ export const CFG = {
     xp: 5,
   },
 
+  /**
+   * The utopets, a drowned man: slow, heavy and hard to kill. He rises
+   * out of a puddle or pond near the hero, or with none free walks in
+   * from beyond the edge of the view, grasps at him from close by,
+   * and where he is laid to rest he leaves drowned water that slows the
+   * hero's feet (see `drowned`).
+   */
+  utopets: {
+    hp: 60,
+    /** Walking speed. */
+    speed: 30,
+    radius: 14,
+    /** Contact damage outside a grasp, as for a navia. */
+    damage: 12,
+    /** The share of a blow's knock-back that moves him: he is heavy. */
+    knockback: 0.35,
+    /**
+     * Seconds he takes to rise, in two poses of half this each, before he
+     * stands; he can be wounded while rising but does no harm.
+     */
+    rise: 0.9,
+    /**
+     * He rises at the middle of a puddle or pond picked at random among
+     * those between these distances from the hero's feet that are free;
+     * with none free, he walks in from the spawn ring like a navia, already
+     * standing.
+     */
+    riseNear: 180,
+    riseFar: 420,
+    /**
+     * A water one rises out of is taken while he rises and for this many
+     * seconds after he stands, so that no two come up on top of each other
+     * (see entities/rising.ts).
+     */
+    riseHold: 1.5,
+    /** Starts a grasp when the hero is this close and the grasp is off cooldown. */
+    graspRange: 46,
+    /** Seconds standing still with an arm raised before the grasp: the tell. */
+    windUp: 0.55,
+    /** The grasp lunges this far towards where the hero stood when the wind-up began... */
+    graspDistance: 34,
+    /** ...in this many seconds. */
+    graspTime: 0.18,
+    /** Dealt once per grasp that reaches the hero. */
+    graspDamage: 20,
+    /** Seconds motionless in the grasping pose after a grasp. */
+    recover: 0.6,
+    /** Seconds after recovering before he may grasp again. */
+    cooldown: 2.0,
+    /** Seconds into the run before the first utopets rises. */
+    appearsAt: 90,
+    /**
+     * From then on, the chance that a spawned enemy is an utopets. The
+     * chances of the kinds are taken from one roll, side by side (see
+     * spawnedKind), so the upyr keeps its share.
+     */
+    share: 1 / 10,
+    /** Worth of the spark he leaves when laid to rest. */
+    xp: 15,
+  },
+
+  /**
+   * The drowned water an utopets leaves where he is laid to rest: a
+   * dark puddle that spreads, stays a while and dries away. While the
+   * hero's feet are in it he wades at `slow` of his speed; enemies are not
+   * slowed. It lies flat like everything on the ground (CFG.ground), so it
+   * is `width` across and `flatten` of that from top to bottom.
+   */
+  drowned: {
+    /** Seconds it takes to spread to its full size. */
+    spread: 0.4,
+    /** Seconds from when it was left until it starts to dry... */
+    last: 14,
+    /** ...and seconds it takes to dry away, shrinking to nothing. */
+    dry: 2,
+    /** The share of his speed the hero keeps while his feet are in it. */
+    slow: 0.55,
+    width: 44,
+    /** Most puddles not yet drying at once; a new one makes the oldest start to dry early. */
+    cap: 12,
+  },
+
   /** The stake's flight; what grows with its level is in `items.stake`. */
   stake: {
     speed: 640,
@@ -406,6 +488,8 @@ export const CFG = {
 
 export type SpawnConfig = typeof CFG.spawn;
 export type UpyrConfig = typeof CFG.upyr;
+export type UtopetsConfig = typeof CFG.utopets;
+export type DrownedConfig = typeof CFG.drowned;
 export type SparkConfig = typeof CFG.spark;
 export type LevelConfig = typeof CFG.levels;
 export type ItemLadders = typeof CFG.items;

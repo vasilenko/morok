@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SpawnConfig } from '../config';
-import { spawnsUpyr, WaveDirector, type WaveEvent } from './WaveDirector';
+import { spawnedKind, WaveDirector, type WaveEvent } from './WaveDirector';
 
 const cfg: SpawnConfig = {
   trickle: 2,
@@ -76,23 +76,36 @@ describe('WaveDirector', () => {
   });
 });
 
-describe('spawnsUpyr', () => {
+describe('spawnedKind', () => {
   const upyr = { appearsAt: 45, share: 1 / 8 };
+  const utopets = { appearsAt: 90, share: 1 / 10 };
+  const kinds = [upyr, utopets];
+  const rolls = Array.from({ length: 4000 }, (_, i) => (i + 0.5) / 4000);
+  const count = (elapsed: number, kind: number) => rolls.filter((roll) => spawnedKind(elapsed, roll, kinds) === kind).length;
 
-  it('never spawns an upyr before it appears', () => {
-    expect(spawnsUpyr(0, 0, upyr)).toBe(false);
-    expect(spawnsUpyr(44.9, 0, upyr)).toBe(false);
+  it('spawns only the common kind before any other appears', () => {
+    expect(count(0, -1)).toBe(rolls.length);
+    expect(spawnedKind(44.9, 0, kinds)).toBe(-1);
   });
 
-  it('spawns an upyr for rolls under its share once it has appeared', () => {
-    expect(spawnsUpyr(45, 0, upyr)).toBe(true);
-    expect(spawnsUpyr(300, 0.124, upyr)).toBe(true);
-    expect(spawnsUpyr(300, 0.125, upyr)).toBe(false);
-    expect(spawnsUpyr(300, 0.99, upyr)).toBe(false);
+  it('makes one enemy in eight an upyr from 45 s, and no utopets before 90 s', () => {
+    expect(count(45, 0)).toBe(500);
+    expect(count(89.9, 0)).toBe(500);
+    expect(count(89.9, 1)).toBe(0);
+    expect(count(89.9, -1)).toBe(3500);
   });
 
-  it('makes about one enemy in eight an upyr', () => {
-    const rolls = Array.from({ length: 800 }, (_, i) => (i + 0.5) / 800);
-    expect(rolls.filter((roll) => spawnsUpyr(60, roll, upyr)).length).toBe(100);
+  it('makes one in ten an utopets from 90 s, leaving the upyr its share', () => {
+    expect(count(90, 0)).toBe(500);
+    expect(count(90, 1)).toBe(400);
+    expect(count(300, -1)).toBe(3100);
+  });
+
+  it('gives each kind its own slice of the roll', () => {
+    expect(spawnedKind(300, 0, kinds)).toBe(0);
+    expect(spawnedKind(300, 0.124, kinds)).toBe(0);
+    expect(spawnedKind(300, 0.125, kinds)).toBe(1);
+    expect(spawnedKind(300, 0.224, kinds)).toBe(1);
+    expect(spawnedKind(300, 0.225, kinds)).toBe(-1);
   });
 });

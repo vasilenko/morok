@@ -1,4 +1,4 @@
-import type { SpawnConfig, UpyrConfig } from '../config';
+import type { SpawnConfig } from '../config';
 
 const TAU = Math.PI * 2;
 
@@ -60,15 +60,26 @@ export class WaveDirector {
   }
 }
 
+/** When a kind of enemy first appears and the chance that a spawned enemy is of it from then on. */
+export interface SpawnShare {
+  appearsAt: number;
+  share: number;
+}
+
 /**
- * Whether the enemy spawned now is an upyr rather than a navia: never
- * before `appearsAt` seconds into the run, then with a chance of `share`.
- * `roll` is a uniform random number in [0, 1).
+ * Which of the rarer kinds the enemy spawned now is, as an index into
+ * `kinds`, or -1 for the common one (the navia). One uniform roll in [0, 1)
+ * decides: each kind owns a slice of `share` of it, side by side in the
+ * order given, whether or not it has appeared yet. A kind that has not
+ * appeared (before `appearsAt` seconds into the run) gives its slice to the
+ * common kind rather than to another, so every kind keeps exactly its own
+ * share once it is out, whatever comes before or after it.
  */
-export function spawnsUpyr(
-  elapsed: number,
-  roll: number,
-  { appearsAt, share }: Pick<UpyrConfig, 'appearsAt' | 'share'>,
-): boolean {
-  return elapsed >= appearsAt && roll < share;
+export function spawnedKind(elapsed: number, roll: number, kinds: readonly SpawnShare[]): number {
+  let from = 0;
+  for (const [i, { appearsAt, share }] of kinds.entries()) {
+    if (roll >= from && roll < from + share) return elapsed >= appearsAt ? i : -1;
+    from += share;
+  }
+  return -1;
 }

@@ -1,6 +1,6 @@
 import { ART_SCALE } from '../art/scale';
 import atlas from '../art/sprites/scenery.json';
-import type { Ellipse } from './footprint';
+import type { Ellipse, Point } from './footprint';
 
 /**
  * Where the scenery stands on the endless plane. The plane is cut into
@@ -139,6 +139,29 @@ export function footprintsIn(left: number, top: number, width: number, height: n
     }
   }
   return footprints;
+}
+
+/** The middle of a puddle or pond: the centre of its image, which lies flat on the ground. */
+export function waterMiddle({ kind, x, y }: SceneryItem): Point {
+  return { x, y: y - kind.height / 2 };
+}
+
+/**
+ * The middles of the puddles and ponds (the flat scenery) that lie between
+ * `near` and `far` from the point (x, y), in the cells within `far` of it.
+ */
+export function watersAround(x: number, y: number, near: number, far: number, seed: number): Point[] {
+  const waters: Point[] = [];
+  for (let cx = Math.floor((x - far) / SCENERY_CELL); cx <= Math.floor((x + far) / SCENERY_CELL); cx++) {
+    for (let cy = Math.floor((y - far) / SCENERY_CELL); cy <= Math.floor((y + far) / SCENERY_CELL); cy++) {
+      const item = sceneryInCell(cx, cy, seed);
+      if (!item?.kind.flat) continue;
+      const middle = waterMiddle(item);
+      const distance = Math.hypot(middle.x - x, middle.y - y);
+      if (distance >= near && distance <= far) waters.push(middle);
+    }
+  }
+  return waters;
 }
 
 /** A fresh seed for a run. */

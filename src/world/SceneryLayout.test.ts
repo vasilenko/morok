@@ -8,6 +8,8 @@ import {
   footprintOf,
   footprintsIn,
   sceneryInCell,
+  waterMiddle,
+  watersAround,
   type SceneryItem,
 } from './SceneryLayout';
 
@@ -142,5 +144,25 @@ describe('footprints', () => {
     }
     expect(found.length).toBeGreaterThan(0);
     expect(found).toEqual(expected);
+  });
+});
+
+describe('watersAround', () => {
+  it('finds the middle of every puddle and pond within the ring, and nothing else', () => {
+    const seed = 7;
+    const [x, y, near, far] = [300, -200, 180, 420];
+    const expected = itemsAround(seed, 12)
+      .filter((item) => item.kind.flat)
+      .map(waterMiddle)
+      .filter((m) => Math.hypot(m.x - x, m.y - y) >= near && Math.hypot(m.x - x, m.y - y) <= far);
+    const found = watersAround(x, y, near, far, seed);
+    expect(expected.length).toBeGreaterThan(0);
+    expect(found).toEqual(expect.arrayContaining(expected));
+    expect(found).toHaveLength(expected.length);
+  });
+
+  it('puts the middle at the centre of the image, half its height above its base', () => {
+    const kind = SCENERY_KINDS.find((k) => k.name === 'pond')!;
+    expect(waterMiddle({ kind, x: 10, y: 100 })).toEqual({ x: 10, y: 100 - kind.height / 2 });
   });
 });

@@ -5,10 +5,13 @@ import { DPR } from '../display';
 import { Horde } from '../entities/Horde';
 import { NAVIA } from '../entities/navia';
 import { UPYR } from '../entities/upyr';
+import { claimWater, pickWater, type RisingClaim } from '../entities/rising';
+import { UTOPETS } from '../entities/utopets';
+import { walkIn, type UtopetsMind } from '../entities/utopetsMind';
 import { Player } from '../entities/Player';
 import { Sparks } from '../entities/Sparks';
 import { dropWorth } from '../entities/spark';
-import type { Enemy } from '../entities/enemy';
+import type { Enemy, EnemyKind } from '../entities/enemy';
 import { Fx } from '../fx/Fx';
 import { controls } from '../input/controls';
 import { addNight, type NightFilter } from '../night/NightFilter';
@@ -23,13 +26,14 @@ import {
   type ItemId,
   type Progress,
 } from '../progression/progression';
-import { spawnsUpyr, WaveDirector } from '../systems/WaveDirector';
+import { spawnedKind, WaveDirector } from '../systems/WaveDirector';
 import { ui, type RunStats } from '../ui/Ui';
 import { AspenStake } from '../weapons/AspenStake';
 import { BlackBook } from '../weapons/BlackBook';
 import { FuneralBell } from '../weapons/FuneralBell';
 import { Sickles } from '../weapons/Sickles';
 import { WolfTeeth } from '../weapons/WolfTeeth';
+import { DrownedWater } from '../world/DrownedWater';
 import { Ground } from '../world/Ground';
 import { Scenery } from '../world/Scenery';
 import { randomScenerySeed } from '../world/SceneryLayout';
@@ -40,6 +44,15 @@ type Mode = 'title' | 'run' | 'pause' | 'choose' | 'dead';
 const BEST_TIME_KEY = 'morok.best';
 /** Registry flag: skip the title screen on the next scene start. */
 const AUTOSTART = 'autostart';
+/**
+ * The kinds rarer than the navia, with when each appears and its share of
+ * the spawns from then on (see spawnedKind); every other spawn is a navia.
+ */
+const RARE_KINDS: readonly { kind: EnemyKind; spawn: { appearsAt: number; share: number } }[] = [
+  { kind: UPYR, spawn: CFG.upyr },
+  { kind: UTOPETS, spawn: CFG.utopets },
+];
+
 /** Longest simulation step, so a slow frame cannot fling things through each other. */
 const MAX_DT = 0.05;
 
@@ -67,6 +80,7 @@ export class GameScene extends Phaser.Scene {
   private sparks!: Sparks;
   private ground!: Ground;
   private scenery!: Scenery;
+  private drowned!: DrownedWater;
   private fx!: Fx;
   private stake!: AspenStake;
   private teeth!: WolfTeeth;
@@ -86,6 +100,8 @@ export class GameScene extends Phaser.Scene {
   /** Seconds the scene has been animating, including the title screen. */
   private clock = 0;
   private kills = 0;
+  /** The waters utoptsy are rising out of, or have just risen out of, and until when. */
+  private risings: RisingClaim[] = [];
   /** Experience gathered in this run: the worth of every spark the skull has drunk in. */
   private xp = 0;
   /** The hero's level and items. */
@@ -98,13 +114,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Draw order, bottom to top: the soil, puddles on it, marks on the
-    // ground (the bell's ring, the book's signs), shadows, then
+    // Draw order, bottom to top: the soil, puddles on it, the drowned water
+    // the utoptsy leave, marks on the ground (the bell's ring, the
+    // book's signs), shadows, then
     // everything standing and the sparks on the ground with the tiny sparks
     // they shed, the trails of the sparks in flight, and what flies over it
     // all. Entities are depth-sorted by the y where they meet the ground.
     const tiles = this.add.layer();
     const puddles = this.add.layer();
+    const drowned = this.add.layer();
     const marks = this.add.layer();
     const shadows = this.add.layer();
     const entities = this.add.layer();
@@ -115,6 +133,7 @@ export class GameScene extends Phaser.Scene {
     this.elapsed = 0;
     this.clock = 0;
     this.kills = 0;
+    this.risings = [];
     this.xp = 0;
     this.progress = newProgress(CFG.items);
     this.offered = [];
@@ -122,6 +141,7 @@ export class GameScene extends Phaser.Scene {
     this.ground = new Ground(this, tiles);
     // A new layout of the scenery for every run.
     this.scenery = new Scenery(this, puddles, entities, randomScenerySeed());
+    this.drowned = new DrownedWater(this, drowned, entities);
     this.player = new Player(this, { shadows, entities, overhead });
     this.horde = new Horde(this, entities, shadows);
     this.sparks = new Sparks(this, entities, lights);
@@ -184,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     enemies: number;
     xp: number;
     sparks: number;
+    drowned: number;
     items: Record<ItemId, number>;
   } {
     const progress = this.progress;
@@ -197,6 +218,7 @@ export class GameScene extends Phaser.Scene {
       enemies: this.horde.size,
       xp: this.xp,
       sparks: this.sparks.size,
+      drowned: this.drowned.size,
       level: progress.level,
       levelXp: progress.xp,
       levelCost: levelCost(progress.level, CFG.levels),
@@ -207,15 +229,20 @@ export class GameScene extends Phaser.Scene {
   private simulate(dt: number): void {
     this.elapsed += dt;
     const player = this.player;
-    player.update(dt, controls.moveX, controls.moveY);
+    // He wades through drowned water at a share of his speed.
+    player.update(dt, controls.moveX, controls.moveY, this.drowned.speedAt(player.x, player.feetY));
     const feet = this.scenery.blockFeet(player.x, player.feetY, CFG.player.radius);
     player.placeFeet(feet.x, feet.y);
 
     const spawnRadius = this.spawnRadius;
     this.director.update(dt, this.elapsed, (angle, extraDistance) => {
       const distance = spawnRadius + extraDistance;
-      const kind = spawnsUpyr(this.elapsed, Math.random(), CFG.upyr) ? UPYR : NAVIA;
-      this.horde.spawn(player.x + Math.cos(angle) * distance, player.y + Math.sin(angle) * distance, this.elapsed, kind);
+      const rare = spawnedKind(this.elapsed, Math.random(), RARE_KINDS.map((k) => k.spawn));
+      const kind = RARE_KINDS[rare]?.kind ?? NAVIA;
+      const x = player.x + Math.cos(angle) * distance;
+      const y = player.y + Math.sin(angle) * distance;
+      if (kind === UTOPETS) this.spawnUtopets(x, y);
+      else this.horde.spawn(x, y, this.elapsed, kind);
     });
 
     const contact = this.horde.update(dt, this.clock, player, spawnRadius, spawnRadius * 1.7, this.strike);
@@ -224,7 +251,8 @@ export class GameScene extends Phaser.Scene {
     this.kills += this.bell.update(dt, player.x, player.feetY);
     this.kills += this.sickles.update(dt, player.x, player.feetY, player.facingY);
     this.kills += this.book.update(dt, player.x, player.feetY);
-    this.horde.removeDead(this.dropSpark);
+    this.horde.removeDead(this.fallen);
+    this.drowned.update(dt);
     const drunk = this.sparks.update(dt, this.clock, player, player.skullEye, this.pickupRadius);
     if (drunk > 0) {
       this.xp += drunk;
@@ -235,6 +263,28 @@ export class GameScene extends Phaser.Scene {
     if (contact > 0 && player.hurt(contact)) this.onPlayerHurt();
     ui.update(this.stats);
     if (this.mode === 'run') this.offerChoice();
+  }
+
+  /**
+   * Brings in an utopets due on the spawn ring at (x, y): rising at the
+   * middle of a free puddle or pond picked at random among those within
+   * reach of the hero (see CFG.utopets), which is then taken until he has
+   * risen and walked off; or, with none free, walking in from (x, y),
+   * already standing, like any other enemy.
+   */
+  private spawnUtopets(x: number, y: number): void {
+    const cfg = CFG.utopets;
+    const player = this.player;
+    const waters = this.scenery.waters(player.x, player.feetY, cfg.riseNear, cfg.riseFar);
+    const water = pickWater(waters, this.risings, this.elapsed, Math.random());
+    if (!water) {
+      const utopets = this.horde.spawn(x, y, this.elapsed, UTOPETS);
+      if (utopets) walkIn(utopets.state as UtopetsMind);
+      return;
+    }
+    if (this.horde.spawn(water.x, water.y - UTOPETS.groundY, this.elapsed, UTOPETS)) {
+      claimWater(this.risings, water, this.elapsed, { rise: cfg.rise, hold: cfg.riseHold });
+    }
   }
 
   /** How far the hero draws in sparks from: further with the hag stone. */
@@ -284,9 +334,18 @@ export class GameScene extends Phaser.Scene {
     this.scene.resume();
   }
 
-  /** Whether `object` gives its own light, which the night keeps in its colour: a coal, a sickle's trail or a sign. */
+  /**
+   * Whether `object` gives its own light, which the night keeps in its
+   * colour: a coal, a sickle's trail, a sign or the sheen on drowned water.
+   */
   private readonly glows = (object: Phaser.GameObjects.GameObject): boolean =>
-    this.sparks.glows(object) || this.sickles.glows(object) || this.book.glows(object);
+    this.sparks.glows(object) || this.sickles.glows(object) || this.book.glows(object) || this.drowned.glows(object);
+
+  /** A slain enemy leaves a spark where it fell, and an utopets drowned water as well. */
+  private readonly fallen = (enemy: Enemy): void => {
+    this.dropSpark(enemy);
+    if (enemy.kind === UTOPETS) this.drowned.add(enemy.x, enemy.y + enemy.kind.groundY);
+  };
 
   /** A slain enemy leaves a spark where it fell. */
   private readonly dropSpark = (enemy: Enemy): void => {

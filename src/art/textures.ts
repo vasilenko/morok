@@ -11,6 +11,8 @@ import sceneryUrl from './sprites/scenery.png';
 import stakeUrl from './sprites/stake.png';
 import upyrAtlas from './sprites/upyr.json';
 import upyrUrl from './sprites/upyr.png';
+import utopetsAtlas from './sprites/utopets.json';
+import utopetsUrl from './sprites/utopets.png';
 import volhvSheet from './sprites/volhv-walk.json';
 import volhvUrl from './sprites/volhv-walk.png';
 import teethAtlas from './sprites/wolf-teeth.json';
@@ -35,6 +37,7 @@ export const GROUND_TILE = 512;
 export const TEX = {
   navia: 'navia',
   upyr: 'upyr',
+  utopets: 'utopets',
   volhv: 'volhv',
   stake: 'stake',
   shadow: 'shadow',
@@ -49,6 +52,7 @@ export const TEX = {
   trail: 'trail',
   signs: 'signs',
   signLight: 'sign-light',
+  drownedSheen: 'drowned-sheen',
 } as const;
 
 /** The black book's four signs, each a frame of the signs' atlas: its cuts, dark, of the opacity of the cut. */
@@ -76,6 +80,7 @@ export const FANG_FRAMES = Object.keys(teethAtlas.frames);
 export const ANIM = {
   naviaFly: 'navia-fly',
   upyrProwl: 'upyr-prowl',
+  utopetsWalk: 'utopets-walk',
   volhvWalk: 'volhv-walk',
 } as const;
 
@@ -117,6 +122,20 @@ export const UPYR_FRAMES = {
   lunge: 'lunge',
   landing: 'landing',
 } as const;
+
+/**
+ * Playback rate of the utopets's heavy walk: four frames, two steps,
+ * per cycle. At his 30 units/s his feet would hold the ground at about
+ * 3 fps, which reads as a slideshow; a little faster, they slide a little.
+ */
+const UTOPETS_WALK_FPS = 4;
+
+/** Frames of the utopets atlas held while rising and attacking; each pivots on its ground point. */
+export const UTOPETS_FRAMES = {
+  rise: ['rise-1', 'rise-2'],
+  windUp: 'wind-up',
+  grasp: 'grasp',
+} as const satisfies Record<string, keyof typeof utopetsAtlas.frames | readonly (keyof typeof utopetsAtlas.frames)[]>;
 
 const TAU = Math.PI * 2;
 
@@ -419,6 +438,32 @@ function createTrail(textures: Phaser.Textures.TextureManager): void {
   textures.addCanvas(TEX.trail, canvas);
 }
 
+/**
+ * The faint witch-light on drowned water (see DrownedWater), so that it can
+ * be made out in the dark as well as in the hero's light: a sickly green
+ * film over the water, gathering into a rim along its edge. A light texture
+ * (see addLightTexture), round, `size` pixels across; the water's edge is
+ * `edge` of the way out from its middle, and its light at its brightest is
+ * `color`, a green well above its red and blue, so the night takes it for
+ * witch-light.
+ */
+export const DROWNED_SHEEN = { size: 128, edge: 0.72, color: [0.04, 0.14, 0.06] };
+
+function createDrownedSheen(textures: Phaser.Textures.TextureManager): void {
+  const { size, edge, color } = DROWNED_SHEEN;
+  const light = new Uint8Array(size * size * 4);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const r = Math.hypot((i + 0.5) / size - 0.5, (j + 0.5) / size - 0.5) * 2;
+      const rim = smoothstep(edge - 0.25, edge, r) * (1 - smoothstep(edge, edge + 0.1, r));
+      const film = 0.2 * (1 - smoothstep(edge - 0.1, edge + 0.05, r));
+      const share = Math.max(rim, film);
+      for (let c = 0; c < 3; c++) light[(j * size + i) * 4 + c] = Math.round(255 * color[c] * share);
+    }
+  }
+  addLightTexture(textures, TEX.drownedSheen, light, size, size);
+}
+
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -440,6 +485,7 @@ export function loadSprites(load: Phaser.Loader.LoaderPlugin): void {
     frameHeight: naviaSheet.frameHeight,
   });
   load.atlas(TEX.upyr, upyrUrl, upyrAtlas);
+  load.atlas(TEX.utopets, utopetsUrl, utopetsAtlas);
   load.image(TEX.stake, stakeUrl);
   load.image(TEX.ground, groundUrl);
   load.atlas(TEX.scenery, sceneryUrl, sceneryAtlas);
@@ -467,6 +513,13 @@ export function createAnimations(anims: Phaser.Animations.AnimationManager): voi
     randomFrame: true,
   });
   anims.create({
+    key: ANIM.utopetsWalk,
+    frames: anims.generateFrameNames(TEX.utopets, { prefix: 'walk-', start: 1, end: 4 }),
+    frameRate: UTOPETS_WALK_FPS,
+    repeat: -1,
+    randomFrame: true,
+  });
+  anims.create({
     key: ANIM.volhvWalk,
     frames: anims.generateFrameNumbers(TEX.volhv),
     frameRate: VOLHV_WALK_FPS,
@@ -481,4 +534,5 @@ export function createTextures(textures: Phaser.Textures.TextureManager): void {
   createRing(textures);
   createTrail(textures);
   createSignLight(textures);
+  createDrownedSheen(textures);
 }

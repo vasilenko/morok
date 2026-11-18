@@ -15,6 +15,8 @@
  *
  * Poses too different in size to share a frame (see UPYR) are packed into
  * an atlas instead, each trimmed on its own with its ground point as pivot.
+ * A sheet drawn as framed cells, each pose standing on a ground line (see
+ * UTOPETS), is cut cell by cell into such an atlas.
  *
  * The ground tile is resized on its own, keeping its seams; see GROUND.
  * The items' pictures and the kill count's icon for the interface are plain
@@ -26,7 +28,18 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { backdropMask, cutOut, groundPoint, isolateFigure, splitFigures, upperBodyAnchor } from './cutout.mjs';
+import {
+  backdropMask,
+  clearUninked,
+  crop,
+  cutOut,
+  findCells,
+  groundPoint,
+  isolateFigure,
+  removeGroundLine,
+  splitFigures,
+  upperBodyAnchor,
+} from './cutout.mjs';
 import { rippleReach, warpRipple } from './ripple.mjs';
 
 /** Must match ART_SCALE in src/art/scale.ts. */
@@ -137,6 +150,38 @@ const UPYR = {
 
 /** How the sheets drawn like the upyr's are cut: figures on a plain white backdrop. */
 const PLAIN_SHEET = UPYR.cut;
+
+/**
+ * The utopets, the drowned man: eight poses, each in a framed cell of
+ * its own on a white backdrop, two rows of four, the cells of the lower row
+ * not as wide as those of the upper. A heavy walk of four frames, rising
+ * out of the ground in two (his head and arms, then on all fours), the
+ * wind-up with an arm raised and the grasp with both arms forward. Every
+ * cell is cut on its own (see cutCells): its frame and its grey number are
+ * left out and the ground line he stands on is taken from under him. Then
+ * the poses are packed as the upyr's are, each pivoted on its ground point;
+ * the bottom edge of the two rising poses, cut off by the ground in the
+ * drawing, is that ground.
+ */
+const UTOPETS = {
+  source: 'utopets.png',
+  output: 'utopets',
+  frames: ['walk-1', 'walk-2', 'walk-3', 'walk-4', 'rise-1', 'rise-2', 'wind-up', 'grasp'],
+  sizedBy: ['walk-1', 'walk-2', 'walk-3', 'walk-4'],
+  height: 58,
+  cut: {
+    ...PLAIN_SHEET,
+    // The frames are drawn in a grey of about 200, fringed up to 234.
+    frame: { minLight: 150, maxLight: 235, maxSpread: 8, minShare: 0.6, minCell: 20 },
+    // Each cell holds one pose, of some 60000 pixels or more; the drops of
+    // water falling from him are loose specks of a few dozen.
+    split: { minArea: 20000, minSpeck: 4, rowGap: 200 },
+    // The numbers are grey no darker than about 137; the drops are outlined in ink.
+    maxInk: 80,
+    // The ground line runs most of the way across its cell.
+    groundLine: { minRun: 0.5, ink: 60 },
+  },
+};
 
 /**
  * The wolf teeth that circle the hero: four fangs in a row, each lying with
@@ -580,17 +625,13 @@ async function writeAtlas(source, output, props) {
 }
 
 /**
- * Cuts every pose out of a sheet, trims each on its own and packs them into
- * an atlas. All poses share one scale, set by the tallest of `sizedBy`, and
- * each frame pivots on its ground point, as a fraction of the frame.
+ * Packs poses cut out of a sheet (by cutFigures or cutCells) into an atlas,
+ * each trimmed on its own. All poses share one scale, set by the tallest of
+ * `sizedBy`, and each frame pivots on its ground point, as a fraction of
+ * the frame.
  */
-async function buildPoseAtlas({ source, output, frames, sizedBy, height, cut }) {
-  const { rgba, labels, figures, info } = await cutSheet(source, cut, frames.length);
-  const poses = figures.map((figure, i) => {
-    const canvas = { width: figure.right - figure.left, height: figure.bottom - figure.top };
-    const corner = { x: figure.left, y: figure.top };
-    const image = isolateFigure(rgba, labels, info.width, figure, corner, canvas, { x: 0, y: 0 });
-    const bounds = opaqueBounds(image, canvas.width, canvas.height);
+async function buildPoseAtlas({ source, output, frames, sizedBy, height }, figures) {
+  const poses = figures.map(({ image, canvas, bounds }, i) => {
     const ground = groundPoint(image, canvas.width, canvas.height, TRIM_ALPHA);
     return { name: frames[i], image, canvas, bounds, ground };
   });
@@ -600,11 +641,7 @@ async function buildPoseAtlas({ source, output, frames, sizedBy, height, cut }) 
   const props = [];
   for (const { name, image, canvas, bounds, ground } of poses) {
     const size = { width: Math.round(bounds.width * scale), height: Math.round(bounds.height * scale) };
-    const data = await sharp(image, { raw: { ...canvas, channels: 4 } })
-      .extract(bounds)
-      .resize({ ...size, fit: 'fill', kernel: sharp.kernel.lanczos3 })
-      .raw()
-      .toBuffer();
+    const data = await resizeFigure({ image, canvas, bounds }, size);
     const pivot = {
       x: round4((ground.x - bounds.left) / bounds.width),
       y: round4((ground.y - bounds.top) / bounds.height),
@@ -659,6 +696,35 @@ async function cutFigures(source, cut, count) {
     const canvas = { width: figure.right - figure.left, height: figure.bottom - figure.top };
     const corner = { x: figure.left, y: figure.top };
     const image = isolateFigure(rgba, labels, info.width, figure, corner, canvas, { x: 0, y: 0 });
+    return { image, canvas, bounds: opaqueBounds(image, canvas.width, canvas.height) };
+  });
+}
+
+/**
+ * Every pose of a sheet of framed cells (see UTOPETS), in the reading
+ * order of the cells, as a raw RGBA image of its own with the bounds of its
+ * opaque pixels. Each cell is cut out on its own, as a sheet of one figure:
+ * the backdrop and the frame round it are cleared, the cell's number goes
+ * as a part without ink, the ground line is taken from under the pose, and
+ * the loose drops of water left in the cell join the pose.
+ */
+async function cutCells(source, { frame, maxInk, groundLine, backdrop, edge, split }, count) {
+  const { data, info } = await sharp(join(sourceDir, source)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const cells = findCells(data, info.width, info.height, info.channels, frame);
+  if (cells.length !== count) throw new Error(`${source}: expected ${count} cells, found ${cells.length}`);
+  return cells.map((cell, i) => {
+    const { width, height } = cell;
+    const pixels = crop(data, info.width, info.channels, cell);
+    const mask = backdropMask(pixels, width, height, info.channels, backdrop);
+    const rgba = cutOut(pixels, width, height, info.channels, mask, edge);
+    clearUninked(rgba, pixels, width, height, info.channels, maxInk);
+    if (!removeGroundLine(rgba, width, height, groundLine)) throw new Error(`${source}: no ground line in cell ${i + 1}`);
+    const { labels, figures } = splitFigures(rgba, width, height, split);
+    if (figures.length !== 1) throw new Error(`${source}: expected one pose in cell ${i + 1}, found ${figures.length}`);
+    const [figure] = figures;
+    const canvas = { width: figure.right - figure.left, height: figure.bottom - figure.top };
+    const corner = { x: figure.left, y: figure.top };
+    const image = isolateFigure(rgba, labels, width, figure, corner, canvas, { x: 0, y: 0 });
     return { image, canvas, bounds: opaqueBounds(image, canvas.width, canvas.height) };
   });
 }
@@ -765,7 +831,8 @@ await mkdir(outputDir, { recursive: true });
 for (const sprite of SPRITES) await buildSprite(sprite);
 await buildGround(GROUND);
 await buildScenery(SCENERY);
-await buildPoseAtlas(UPYR);
+await buildPoseAtlas(UPYR, await cutFigures(UPYR.source, UPYR.cut, UPYR.frames.length));
+await buildPoseAtlas(UTOPETS, await cutCells(UTOPETS.source, UTOPETS.cut, UTOPETS.frames.length));
 await buildFigureAtlas(WOLF_TEETH);
 await buildPictures(ITEM_PICTURES);
 await buildPictures(RELIC_PICTURES);

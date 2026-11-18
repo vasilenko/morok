@@ -35,6 +35,7 @@ export const NAVIA: EnemyKind<null> = {
   shadowWidth: 24,
   shadowAlpha: 0.3,
   groundY: SHADOW_Y,
+  knockback: 1,
 
   /** Later arrivals are a little faster. */
   create(elapsed) {
